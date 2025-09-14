@@ -27,6 +27,13 @@ android_app_certificate {
     certificate: "com.android.npumanager",
 }
 
+
+systemserverclasspath_fragment {
+    name: "com.android.npumanager-systemserverclasspath-fragment",
+    standalone_contents: ["service-npumanager"],
+    apex_available: ["com.android.npumanager"],
+}
+
 apex {
     name: "com.android.npumanager",
     manifest: "manifest.json",
@@ -34,4 +41,5 @@ apex {
     key: "com.android.npumanager.key",
     certificate: ":com.android.npumanager.certificate",
     defaults: ["b-launched-apex-module"],
+    systemserverclasspath_fragments: ["com.android.npumanager-systemserverclasspath-fragment"],
 }
