@@ -39,6 +39,7 @@ java_library {
     apex_available: ["com.android.npumanager"],
     libs: [
         "modules-utils-preconditions",
+        "npumanager_flags_lib",
     ],
     static_libs: [
     ],

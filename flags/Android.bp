@@ -33,6 +33,7 @@ java_aconfig_library {
     min_sdk_version: "36",
     visibility: [
         "//frameworks/base",
+        "//packages/modules/NpuManager:__subpackages__",
     ],
     apex_available: [
         "com.android.npumanager",
