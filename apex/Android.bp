@@ -27,14 +27,25 @@ android_app_certificate {
     certificate: "com.android.npumanager",
 }
 
-
 systemserverclasspath_fragment {
+    // This fragment will be enabled using RELEASE_NPUMANAGER_MODULE flag
+    enabled: select(release_flag("RELEASE_NPUMANAGER_MODULE"), {
+        true: true,
+        false: false,
+    }),
+
     name: "com.android.npumanager-systemserverclasspath-fragment",
     standalone_contents: ["service-npumanager"],
     apex_available: ["com.android.npumanager"],
 }
 
 apex {
+    // This apex will be enabled using RELEASE_NPUMANAGER_MODULE flag
+    enabled: select(release_flag("RELEASE_NPUMANAGER_MODULE"), {
+        true: true,
+        false: false,
+    }),
+
     name: "com.android.npumanager",
     manifest: "manifest.json",
     file_contexts: ":com.android.npumanager-file_contexts",
