@@ -1,0 +1,10 @@
+package: "com.android.npumanager"
+container: "com.android.npumanager"
+
+flag {
+    name: "npumanager_enabled"
+    is_exported: true
+    namespace: "machine_learning"
+    description: "This flag controls whether NpuManager is enabled"
+    bug: "416283422"
+}
