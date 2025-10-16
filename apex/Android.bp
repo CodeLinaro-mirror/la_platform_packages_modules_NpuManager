@@ -27,36 +27,6 @@ android_app_certificate {
     certificate: "com.android.npumanager",
 }
 
-bootclasspath_fragment {
-    // This fragment will be enabled using RELEASE_NPUMANAGER_MODULE flag
-    enabled: select(release_flag("RELEASE_NPUMANAGER_MODULE"), {
-        true: true,
-        false: false,
-    }),
-
-    name: "com.android.npumanager-bootclasspath-fragment",
-    contents: ["framework-npumanager"],
-    apex_available: ["com.android.npumanager"],
-
-    // The bootclasspath_fragments that provide APIs on which this depends.
-    fragments: [
-        {
-            apex: "com.android.art",
-            module: "art-bootclasspath-fragment",
-        },
-    ],
-
-    // Additional stubs libraries that this fragment's contents use which are
-    // not provided by another bootclasspath_fragment.
-    additional_stubs: [
-        "android-non-updatable",
-    ],
-
-    hidden_api: {
-        split_packages: ["*"],
-    },
-}
-
 systemserverclasspath_fragment {
     // This fragment will be enabled using RELEASE_NPUMANAGER_MODULE flag
     enabled: select(release_flag("RELEASE_NPUMANAGER_MODULE"), {
@@ -82,6 +52,5 @@ apex {
     key: "com.android.npumanager.key",
     certificate: ":com.android.npumanager.certificate",
     defaults: ["b-launched-apex-module"],
-    bootclasspath_fragments: ["com.android.npumanager-bootclasspath-fragment"],
     systemserverclasspath_fragments: ["com.android.npumanager-systemserverclasspath-fragment"],
 }
