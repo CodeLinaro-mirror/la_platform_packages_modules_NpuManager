@@ -13,14 +13,22 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
-<configuration description="Config for MTS NPU Manager test cases">
-    <option name="test-suite-tag" value="mts" />
+<configuration description="Config for CTS NPU Manager test cases">
+    <option name="test-suite-tag" value="cts" />
     <option name="config-descriptor:metadata" key="component" value="npumanager" />
-    <test class="com.android.tradefed.testtype.AndroidJUnitTest" >
-        <option name="package" value="com.android.npumanager.mts" />
-    </test>
+    <option name="config-descriptor:metadata" key="parameter" value="not_instant_app" />
+    <option name="config-descriptor:metadata" key="parameter" value="not_multi_abi" />
+    <option name="config-descriptor:metadata" key="parameter" value="secondary_user" />
 
+    <test class="MoblyAospTest" />
+    <device name="AndroidDevice">
+        <target_preparer class="AndroidInstallAppsDecorator" />
+    </device>
+
+    <option name="mobly_pkg" key="file" value="CtsNpuManagerTestCases"/>
     <object type="module_controller" class="com.android.tradefed.testtype.suite.module.MainlineTestModuleController">
         <option name="mainline-module-package-name" value="com.google.android.npumanager" />
     </object>
+    <option name="build_apk" key="file" value="BackgroundNnapiDelegateApp.apk" />
+    <option name="build_apk" key="file" value="ForegroundNnapiDelegateApp.apk" />
 </configuration>
