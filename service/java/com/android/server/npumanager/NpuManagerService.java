@@ -43,9 +43,6 @@ public class NpuManagerService extends SystemService {
 
     public NpuManagerService(Context context) {
         super(context);
-        if (context == null) {
-            throw new IllegalArgumentException("Context cannot be null");
-        }
         mImpl = new NpuManagerServiceImpl(context);
     }
 
