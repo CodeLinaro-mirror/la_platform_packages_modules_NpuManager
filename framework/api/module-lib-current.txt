@@ -1,9 +1,1 @@
 // Signature format: 2.0
-package android.npumanager {
-
-  public final class NpuManagerFrameworkInitializer {
-    method public static void registerServiceWrappers();
-  }
-
-}
-

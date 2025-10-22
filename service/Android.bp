@@ -40,7 +40,6 @@ java_library {
     libs: [
         "modules-utils-preconditions",
         "npumanager_flags_lib",
-        "framework-npumanager.impl",
     ],
     static_libs: [
     ],
