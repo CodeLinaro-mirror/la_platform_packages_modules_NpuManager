@@ -18,6 +18,7 @@ package android.npumanager;
 
 import android.annotation.NonNull;
 import android.annotation.SystemService;
+import android.annotation.SystemApi;
 import android.content.Context;
 import android.os.IBinder;
 import android.os.RemoteException;
@@ -29,6 +30,7 @@ import android.npumanager.aidl.INpuManagerService;
  *
  * @hide
  */
+@SystemApi
 @SystemService(Context.NPU_SERVICE)
 public final class NpuManager {
     private final INpuManagerService mService;
