@@ -20,7 +20,7 @@ package {
 }
 
 python_test_host {
-    name: "CtsNpuManagerMoblyTestCases",
+    name: "CtsNpuManagerTestCases",
     main: "cts_npu_manager_test.py",
     srcs: ["cts_npu_manager_test.py"],
     libs: [
@@ -43,33 +43,4 @@ python_test_host {
         "general-tests",
         "cts",
     ],
-}
-
-android_test {
-    name: "CtsNpuManagerTestCases",
-    team: "trendy_team_machine_learning",
-    defaults: ["cts_defaults"],
-    libs: [
-        "android.test.runner.stubs.system",
-        "android.test.base.stubs.system",
-        "npumanager_flags_lib",
-    ],
-    srcs: [
-        "src/**/*.java",
-    ],
-    // Tag this module as a cts test artifact
-    test_suites: [
-        "cts",
-        "general-tests",
-    ],
-    static_libs: [
-        "ctstestrunner-axt",
-        "modules-utils-build",
-        "testng",
-        "flag-junit",
-        "compatibility-device-util-axt",
-    ],
-    min_sdk_version: "36",
-    sdk_version: "test_current",
-
 }

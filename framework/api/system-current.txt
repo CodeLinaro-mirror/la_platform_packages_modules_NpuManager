@@ -1,8 +1,1 @@
 // Signature format: 2.0
-package android.npumanager {
-
-  public final class NpuManager {
-  }
-
-}
-
