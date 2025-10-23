@@ -47,6 +47,12 @@ python_test_host {
 
 android_test {
     name: "CtsNpuManagerTestCases",
+
+    enabled: select(release_flag("RELEASE_NPUMANAGER_MODULE"), {
+        true: true,
+        false: false,
+    }),
+
     team: "trendy_team_machine_learning",
     defaults: ["cts_defaults"],
     libs: [
