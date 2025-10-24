@@ -19,17 +19,32 @@ package {
     default_team: "trendy_team_machine_learning",
 }
 
-android_test {
-    name: "MtsNpuManagerTestCases",
-    platform_apis: true,
-    min_sdk_version: "37",
-    sdk_version: "test_current",
+python_defaults {
+    name: "CtsNpuManagerPythonDefaults",
+    libs: [
+        "mobly",
+        "platform-test-py-annotations",
+    ],
+}
 
-    libs: ["android.test.base.stubs"],
+python_test_host {
+    name: "CtsNpuManagerTestCases",
+    main: "cts_npu_manager_test.py",
+    srcs: ["cts_npu_manager_test.py"],
+    libs: ["mobly"],
+    test_config: "AndroidTest.xml",
+    test_options: {
+        unit_test: false,
+        runner: "mobly",
+    },
+    device_common_data: [
+        ":mobly-bundled-snippets",
+        ":BackgroundNnapiDelegateApp",
+        ":ForegroundNnapiDelegateApp",
+    ],
 
-    // Tag this module as an mts test artifact
     test_suites: [
         "general-tests",
-        "mts-npumanager",
+        "cts",
     ],
 }
