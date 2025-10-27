@@ -17,42 +17,31 @@ package {
 }
 
 filegroup {
-    name: "service-npumanager-sources",
+    name: "framework-npumanager-sources",
     srcs: [
         "java/**/*.java",
+        "java/**/*.aidl",
     ],
     path: "java",
+    visibility: [
+        "//frameworks/base",
+        "//packages/modules/NpuManager:__subpackages__",
+    ],
 }
 
-java_library {
-    name: "service-npumanager",
+java_sdk_library {
+    name: "framework-npumanager",
+    srcs: [":framework-npumanager-sources"],
+    defaults: ["framework-module-defaults"],
     permitted_packages: [
-        "com.android.server.npumanager",
+        "android.npumanager",
+        "com.android.npumanager",
     ],
-    srcs: [":service-npumanager-sources"],
-    sdk_version: "system_server_current",
-    min_sdk_version: "36",
-    defaults: [
-        "framework-system-server-module-defaults",
-        "framework-system-server-module-optimize-defaults",
-    ],
+    impl_library_visibility: ["//packages/modules/NpuManager:__subpackages__"],
     apex_available: ["com.android.npumanager"],
-    libs: [
-        "modules-utils-preconditions",
-        "npumanager_flags_lib",
-        "framework-npumanager.impl",
-    ],
-    static_libs: [
-    ],
-    installable: true,
-
-    errorprone: {
-        extra_check_modules: [
-            "//external/nullaway:nullaway_plugin",
-        ],
-        javacflags: [
-            "-Xep:NullAway:ERROR",
-            "-XepOpt:NullAway:AnnotatedPackages=com.android.server.npumanager",
-        ],
-    },
+    sdk_version: "module_current",
+    min_sdk_version: "36",
+    unsafe_ignore_missing_latest_api: true,
+    libs: ["framework-annotations-lib"],
+    static_libs: ["npumanager_flags_lib"],
 }
