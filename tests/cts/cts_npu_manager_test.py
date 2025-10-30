@@ -21,6 +21,7 @@ from mobly import base_test
 from mobly import test_runner
 from mobly.controllers import android_device
 from mobly.controllers.android_device_lib import apk_utils
+from mobly.tools import device_flags
 
 _BACKGROUND_APP_PACKAGE_NAME = (
     'com.android.npumanager.delegateapp'
@@ -28,6 +29,8 @@ _BACKGROUND_APP_PACKAGE_NAME = (
 _FOREGROUND_APP_PACKAGE_NAME = (
     'com.android.npumanager.delegateapp.foreground'
 )
+
+_NAMESPACE = 'machine_learning'
 
 class CtsNpuManagerTest(base_test.BaseTestClass):
 
@@ -42,6 +45,11 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
             'foreground_delegate_snippet',
             _FOREGROUND_APP_PACKAGE_NAME,
         )
+        self.flags = device_flags.DeviceFlags(self.dut)
+        flag_val = self.flags.get_value(_NAMESPACE,
+                            'com.android.npumanager.npumanager_enabled')
+
+        self.npu_manager_enabled = flag_val == 'true'
 
     def teardown_test(self):
         self.dut.background_delegate_snippet.closeActivity()
@@ -59,6 +67,9 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
         4. Ensure that the foreground app finishes its inference first.
         :return:
         """
+        asserts.skip_if(not self.npu_manager_enabled,
+                        'NpuManager flag must be enabled for this test.')
+
         inference_handler_background =  self.dut.background_delegate_snippet.asyncWaitForInferenceComplete(
             'background'
         )
