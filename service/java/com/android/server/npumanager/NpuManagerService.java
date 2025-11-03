@@ -16,41 +16,30 @@
 
 package com.android.server.npumanager;
 
-import com.android.server.SystemService;
-import com.android.npumanager.Flags;
-
-import android.annotation.FlaggedApi;
-import android.app.ActivityManager;
-import android.content.BroadcastReceiver;
+import android.annotation.NonNull;
 import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.FeatureInfo;
-import android.content.pm.PackageInfo;
-import android.npumanager.aidl.INpuManagerService;
-import android.content.pm.PackageManager;
 import android.util.Log;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
+import com.android.server.SystemService;
 
-/**
- */
+/** */
 public class NpuManagerService extends SystemService {
-    private final NpuManagerServiceImpl mImpl;
+    final String TAG = "NpuManagerService";
+    private NpuManagerServiceImpl mNpuManagerServiceImpl;
 
-    public NpuManagerService(Context context) {
+    public NpuManagerService(@NonNull Context context) {
         super(context);
         if (context == null) {
             throw new IllegalArgumentException("Context cannot be null");
         }
-        mImpl = new NpuManagerServiceImpl(context);
+        mNpuManagerServiceImpl = new NpuManagerServiceImpl(context);
     }
 
     @Override
     public void onStart() {
-        publishBinderService(Context.NPU_SERVICE, mImpl);
+        Log.d(TAG, "onStart");
+        if (mNpuManagerServiceImpl != null) {
+            publishBinderService(Context.NPU_SERVICE, mNpuManagerServiceImpl);
+        }
     }
 }

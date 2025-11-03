@@ -28,24 +28,26 @@ java_library {
     name: "service-npumanager",
     permitted_packages: [
         "com.android.server.npumanager",
+        "com.android.npumanager",
     ],
     srcs: [":service-npumanager-sources"],
     sdk_version: "system_server_current",
     min_sdk_version: "36",
+    platform_apis: false,
     defaults: [
         "framework-system-server-module-defaults",
         "framework-system-server-module-optimize-defaults",
     ],
     apex_available: ["com.android.npumanager"],
     libs: [
-        "modules-utils-preconditions",
-        "npumanager_flags_lib",
+        "framework-npumanager.stubs",
+        "framework-npumanager.stubs.system",
         "framework-npumanager.impl",
     ],
     static_libs: [
+        "npumanager_flags_lib",
     ],
     installable: true,
-
     errorprone: {
         extra_check_modules: [
             "//external/nullaway:nullaway_plugin",

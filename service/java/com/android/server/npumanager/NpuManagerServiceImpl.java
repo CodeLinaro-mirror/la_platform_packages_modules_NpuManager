@@ -16,7 +16,13 @@
 
 package com.android.server.npumanager;
 
+import static android.content.pm.PackageManager.PERMISSION_GRANTED;
+import static android.npumanager.NpuManager.NPU_MODEL_POLICY_STATUS_QUO;
+import static android.os.Process.SYSTEM_UID;
+
 import android.annotation.FlaggedApi;
+import android.annotation.PermissionManuallyEnforced;
+import android.annotation.SystemService;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -26,22 +32,29 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.FeatureInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import com.android.npumanager.Flags;
+import android.npumanager.IModelLoadCallback;
 import android.npumanager.aidl.INpuManagerService;
+import android.os.Binder;
+import android.os.Bundle;
+import android.os.UserHandle;
 import android.util.Log;
-import android.util.Slog;
+
+import com.android.npumanager.Flags;
 
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 
+@SystemService(Context.NPU_SERVICE)
 public final class NpuManagerServiceImpl extends INpuManagerService.Stub
         implements ActivityManager.OnUidImportanceListener {
     private static final String TAG = "NpuManagerService";
     private final Context mContext;
     private HashMap<String, Integer> mNpuPackages = new HashMap<>();
+    private NpuModelLoadingPolicy mNpuModelLoadingPolicy;
 
     public NpuManagerServiceImpl(Context context) {
+        mNpuModelLoadingPolicy = new StatusQuoModelLoadingPolicy();
         mContext = context;
         if (!Flags.npumanagerEnabled()) {
             return;
@@ -58,9 +71,10 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
             }
         }
         ActivityManager activityManager = context.getSystemService(ActivityManager.class);
-        int[] uids = Arrays.stream(mNpuPackages.values().toArray(new Integer[0]))
-                .mapToInt(Integer::intValue)
-                .toArray();
+        int[] uids =
+                Arrays.stream(mNpuPackages.values().toArray(new Integer[0]))
+                        .mapToInt(Integer::intValue)
+                        .toArray();
         activityManager.addOnUidImportanceListener(this, 0, uids);
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_PACKAGE_ADDED);
@@ -85,62 +99,115 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
         Log.d(TAG, "onUidImportance: " + uid + " " + importance);
     }
 
-    BroadcastReceiver mReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if (intent != null) {
-                PackageManager pm = context.getPackageManager();
+    BroadcastReceiver mReceiver =
+            new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    if (intent != null) {
+                        PackageManager pm = context.getPackageManager();
 
-                String action = intent.getAction();
-                String packageName = intent.getData().getSchemeSpecificPart();
-                try {
-                    PackageInfo packageInfo = pm.getPackageInfo(packageName, 0);
+                        String action = intent.getAction();
+                        String packageName = intent.getData().getSchemeSpecificPart();
+                        try {
+                            PackageInfo packageInfo = pm.getPackageInfo(packageName, 0);
 
-                    boolean updateListener = false;
-                    if (Intent.ACTION_PACKAGE_ADDED.equals(action)) {
-                        if (doesPackageUseNpuFeature(packageInfo)) {
-                            ApplicationInfo appInfo = packageInfo.applicationInfo;
-                            if (appInfo != null) {
-                                mNpuPackages.put(packageInfo.packageName, appInfo.uid);
-                                updateListener = true;
-                            }
-                        }
-                    } else if (Intent.ACTION_PACKAGE_REMOVED.equals(action)) {
-                        if (mNpuPackages.containsKey(packageName)) {
-                            mNpuPackages.remove(packageName);
-                            updateListener = true;
-                        }
-                    } else if (Intent.ACTION_PACKAGE_REPLACED.equals(action)) {
-                        if (mNpuPackages.containsKey(packageName)) {
-                            if (!doesPackageUseNpuFeature(packageInfo)) {
-                                mNpuPackages.remove(packageName);
-                                updateListener = true;
-                            }
-                        } else {
-                            if (doesPackageUseNpuFeature(packageInfo)) {
-                                ApplicationInfo appInfo = packageInfo.applicationInfo;
-                                if (appInfo != null) {
-                                    mNpuPackages.put(packageInfo.packageName, appInfo.uid);
+                            boolean updateListener = false;
+                            if (Intent.ACTION_PACKAGE_ADDED.equals(action)) {
+                                if (doesPackageUseNpuFeature(packageInfo)) {
+                                    ApplicationInfo appInfo = packageInfo.applicationInfo;
+                                    if (appInfo != null) {
+                                        mNpuPackages.put(packageInfo.packageName, appInfo.uid);
+                                        updateListener = true;
+                                    }
+                                }
+                            } else if (Intent.ACTION_PACKAGE_REMOVED.equals(action)) {
+                                if (mNpuPackages.containsKey(packageName)) {
+                                    mNpuPackages.remove(packageName);
                                     updateListener = true;
                                 }
+                            } else if (Intent.ACTION_PACKAGE_REPLACED.equals(action)) {
+                                if (mNpuPackages.containsKey(packageName)) {
+                                    if (!doesPackageUseNpuFeature(packageInfo)) {
+                                        mNpuPackages.remove(packageName);
+                                        updateListener = true;
+                                    }
+                                } else {
+                                    if (doesPackageUseNpuFeature(packageInfo)) {
+                                        ApplicationInfo appInfo = packageInfo.applicationInfo;
+                                        if (appInfo != null) {
+                                            mNpuPackages.put(packageInfo.packageName, appInfo.uid);
+                                            updateListener = true;
+                                        }
+                                    }
+                                }
                             }
+                            if (updateListener) {
+                                ActivityManager activityManager =
+                                        context.getSystemService(ActivityManager.class);
+                                int[] uids =
+                                        Arrays.stream(mNpuPackages.values().toArray(new Integer[0]))
+                                                .mapToInt(Integer::intValue)
+                                                .toArray();
+                                activityManager.removeOnUidImportanceListener(
+                                        NpuManagerServiceImpl.this);
+                                activityManager.addOnUidImportanceListener(
+                                        NpuManagerServiceImpl.this, 0, uids);
+                            }
+
+                        } catch (PackageManager.NameNotFoundException nnfe) {
+                            Log.e(TAG, "package name from broadcast not found", nnfe);
                         }
                     }
-                    if (updateListener) {
-                        ActivityManager activityManager = context.getSystemService(
-                                ActivityManager.class);
-                        int[] uids = Arrays.stream(mNpuPackages.values().toArray(new Integer[0]))
-                                .mapToInt(Integer::intValue)
-                                .toArray();
-                        activityManager.removeOnUidImportanceListener(NpuManagerServiceImpl.this);
-                        activityManager.addOnUidImportanceListener(
-                            NpuManagerServiceImpl.this, 0, uids);
-                    }
-
-                } catch (PackageManager.NameNotFoundException nnfe) {
-                    Log.e(TAG, "package name from broadcast not found", nnfe);
                 }
-            }
+            };
+
+    static void enforceModelManagerPermissions(Context context) {
+        if (UserHandle.getAppId(Binder.getCallingUid()) == SYSTEM_UID) {
+            return;
         }
-    };
+
+        if (context.checkCallingPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API)
+                != PERMISSION_GRANTED) {
+            throw new SecurityException("Model Manager permission denied");
+        }
+    }
+
+    /** Callback will be called when it is advisable to load the model. */
+    @Override
+    @PermissionManuallyEnforced
+    public void canLoadModel(int size, int priority, IModelLoadCallback callback) {
+        enforceModelManagerPermissions(mContext);
+        mNpuModelLoadingPolicy.canLoadModel(size, priority, callback);
+    }
+
+    /** Inform the system that a model of size sizeMB has been loaded. */
+    @Override
+    @PermissionManuallyEnforced
+    public void notifyModelLoaded(int size, IModelLoadCallback callback) {
+        enforceModelManagerPermissions(mContext);
+        mNpuModelLoadingPolicy.handleModelLoaded(size, callback);
+    }
+
+    /**
+     * Inform the system that a model of sizeMB has been unloaded. Callback should be provided to
+     * match with previous calls to notifyModelLoaded.
+     */
+    @Override
+    @PermissionManuallyEnforced
+    public void notifyModelUnloaded(int size, IModelLoadCallback callback) {
+        enforceModelManagerPermissions(mContext);
+        mNpuModelLoadingPolicy.handleModelUnload(size, callback);
+    }
+
+    /** Set the model loading policy. */
+    @Override
+    @PermissionManuallyEnforced
+    public void setPolicy(int policy, Bundle policyParams) {
+        enforceModelManagerPermissions(mContext);
+        mNpuModelLoadingPolicy =
+                switch (policy) {
+                    case NPU_MODEL_POLICY_STATUS_QUO -> new StatusQuoModelLoadingPolicy();
+                    default -> throw new IllegalArgumentException("Unsupported policy: " + policy);
+                };
+    }
 }

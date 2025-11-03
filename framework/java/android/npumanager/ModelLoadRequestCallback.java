@@ -1,0 +1,51 @@
+/*
+ * Copyright (C) 2025 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package android.npumanager;
+
+import android.annotation.FlaggedApi;
+import android.annotation.SystemApi;
+
+/**
+ * Callback interface for model load requests.
+ *
+ * @hide
+ */
+@SystemApi
+@FlaggedApi(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
+public interface ModelLoadRequestCallback {
+    /**
+     * The app can load the model with the specified size
+     *
+     * @param sizeMB The size of the model that can be loaded.
+     * @param status The status of the model load request.
+     * @param listener A listener that should be called to notify the Model Manager that the model
+     *     has been loaded.
+     */
+    public void onCanLoadModel(
+            int sizeMB,
+            @NpuManager.NpuModelLoadStatus int status,
+            NpuManager.ModelLoadStatusListener listener);
+
+    /**
+     * The app should unload the model to free at least sizeMB
+     *
+     * @param sizeMB The size of the model that should be unloaded.
+     * @param listener A listener that should be called to notify the Model Manager that the model
+     *     has been unloaded.
+     */
+    public void onRequestUnloadModel(int sizeMB, NpuManager.ModelLoadStatusListener listener);
+}

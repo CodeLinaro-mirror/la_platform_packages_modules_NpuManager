@@ -21,28 +21,24 @@ import android.app.SystemServiceRegistry;
 import android.content.Context;
 import android.npumanager.aidl.INpuManagerService;
 
-/**
- * @hide
- */
+/** @hide */
 @SystemApi(client = SystemApi.Client.MODULE_LIBRARIES)
 public final class NpuManagerFrameworkInitializer {
     private NpuManagerFrameworkInitializer() {}
 
     /**
-     * Called by {@link SystemServiceRegistry}'s static initializer and registers the
-     * NpuManager service to {@link Context}, so that {@link Context#getSystemService} can return
-     * it.
+     * Called by {@link SystemServiceRegistry}'s static initializer and registers the NpuManager
+     * service to {@link Context}, so that {@link Context#getSystemService} can return it.
      *
-     * @throws IllegalStateException if this is called from anywhere besides
-     * {@link SystemServiceRegistry}
+     * @throws IllegalStateException if this is called from anywhere besides {@link
+     *     SystemServiceRegistry}
      */
     public static void registerServiceWrappers() {
         SystemServiceRegistry.registerContextAwareService(
                 Context.NPU_SERVICE,
                 NpuManager.class,
                 (context, serviceBinder) ->
-                        new NpuManager(context, INpuManagerService.Stub.asInterface(
-                                serviceBinder))
-        );
+                        new NpuManager(
+                                context, INpuManagerService.Stub.asInterface(serviceBinder)));
     }
 }

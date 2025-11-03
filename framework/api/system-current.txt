@@ -1,7 +1,28 @@
 // Signature format: 2.0
 package android.npumanager {
 
-  public final class NpuManager {
+  @FlaggedApi("com.android.npumanager.npumanager_enabled") public interface ModelLoadRequestCallback {
+    method public void onCanLoadModel(int, int, android.npumanager.NpuManager.ModelLoadStatusListener);
+    method public void onRequestUnloadModel(int, android.npumanager.NpuManager.ModelLoadStatusListener);
+  }
+
+  @FlaggedApi("com.android.npumanager.npumanager_enabled") public final class NpuManager {
+    method @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API) public void requestLoadModel(int, int, @NonNull android.npumanager.ModelLoadRequestCallback) throws android.os.RemoteException;
+    method @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API) public void setPolicy(int, android.os.Bundle) throws android.os.RemoteException;
+    field public static final int NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW = 0; // 0x0
+    field public static final int NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED = 2; // 0x2
+    field public static final int NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD = 1; // 0x1
+    field public static final int NPU_MODEL_POLICY_STATUS_QUO = 0; // 0x0
+    field public static final int NPU_MODEL_PRIORITY_BACKGROUND = 1000; // 0x3e8
+    field public static final int NPU_MODEL_PRIORITY_NORMAL = 0; // 0x0
+    field public static final int NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB = 1; // 0x1
+    field public static final int NPU_MODEL_SIZE_GREATER_THAN_2G = 2; // 0x2
+    field public static final int NPU_MODEL_SIZE_LESS_THAN_1GB = 0; // 0x0
+  }
+
+  public class NpuManager.ModelLoadStatusListener {
+    method public void notifyModelLoaded(int) throws android.os.RemoteException;
+    method public void notifyModelUnloaded(int) throws android.os.RemoteException;
   }
 
 }
