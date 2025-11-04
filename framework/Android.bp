@@ -20,6 +20,7 @@ filegroup {
     name: "framework-npumanager-sources",
     srcs: [
         "java/**/*.java",
+        "java/**/*.aidl",
     ],
     path: "java",
     visibility: [
@@ -33,6 +34,7 @@ java_sdk_library {
     srcs: [":framework-npumanager-sources"],
     defaults: ["framework-module-defaults"],
     permitted_packages: [
+        "android.npumanager",
         "com.android.npumanager",
     ],
     impl_library_visibility: ["//packages/modules/NpuManager:__subpackages__"],
