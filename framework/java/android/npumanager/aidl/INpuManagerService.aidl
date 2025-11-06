@@ -16,9 +16,20 @@
 
 package android.npumanager.aidl;
 
+import android.npumanager.IModelLoadCallback;
+import android.os.Bundle;
+
 /**
  * Binder interface to communicate with the NpuManagerService.
  * @hide
  */
 oneway interface INpuManagerService {
+    @PermissionManuallyEnforced
+    void canLoadModel(int size, int priority, in IModelLoadCallback callback);
+    @PermissionManuallyEnforced
+    void notifyModelLoaded(int size, in IModelLoadCallback callback);
+    @PermissionManuallyEnforced
+    void notifyModelUnloaded(int size, in IModelLoadCallback callback);
+    @PermissionManuallyEnforced
+    void setPolicy(int policy, in Bundle policyParams);
 }

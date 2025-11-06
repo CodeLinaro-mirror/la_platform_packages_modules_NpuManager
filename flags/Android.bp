@@ -27,14 +27,28 @@ aconfig_declarations {
 }
 
 java_aconfig_library {
-    name: "npumanager_flags_lib",
+    name: "npumanager_aconfig_flags_lib",
     aconfig_declarations: "npumanager_aconfig_flags",
     defaults: ["framework-minus-apex-aconfig-java-defaults"],
     min_sdk_version: "36",
+    apex_available: [
+        "com.android.npumanager",
+    ],
+}
+
+java_library {
+    name: "npumanager_flags_lib",
+    srcs: ["src/**/*.java"],
+    sdk_version: "system_current",
+    min_sdk_version: "36",
+    static_libs: [
+        "npumanager_aconfig_flags_lib",
+    ],
     visibility: [
         "//frameworks/base",
         "//packages/modules/NpuManager:__subpackages__",
     ],
+    installable: false,
     apex_available: [
         "com.android.npumanager",
     ],

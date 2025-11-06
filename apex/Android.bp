@@ -75,7 +75,8 @@ apex {
         true: true,
         false: false,
     }),
-
+    prebuilts: ["current_sdkinfo"],
+    min_sdk_version: "36",
     name: "com.android.npumanager",
     manifest: "manifest.json",
     file_contexts: ":com.android.npumanager-file_contexts",
@@ -84,4 +85,17 @@ apex {
     defaults: ["b-launched-apex-module"],
     bootclasspath_fragments: ["com.android.npumanager-bootclasspath-fragment"],
     systemserverclasspath_fragments: ["com.android.npumanager-systemserverclasspath-fragment"],
+}
+
+sdk {
+    enabled: select(release_flag("RELEASE_NPUMANAGER_MODULE"), {
+        true: true,
+        false: false,
+    }),
+    name: "npumanager-module-sdk",
+    apexes: [
+        // Adds exportable dependencies of the APEX to the sdk,
+        // e.g. *classpath_fragments.
+        "com.android.npumanager",
+    ],
 }
