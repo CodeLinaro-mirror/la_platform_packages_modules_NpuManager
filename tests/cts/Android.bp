@@ -58,7 +58,6 @@ android_test {
     libs: [
         "android.test.runner.stubs.system",
         "android.test.base.stubs.system",
-        "npumanager_flags_lib",
     ],
     srcs: [
         "src/**/*.java",
@@ -74,6 +73,8 @@ android_test {
         "testng",
         "flag-junit",
         "compatibility-device-util-axt",
+        "npumanager_flags_lib",
+        "androidx.test.uiautomator_uiautomator",
     ],
     min_sdk_version: "36",
     sdk_version: "test_current",

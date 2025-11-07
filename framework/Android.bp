@@ -1,47 +1,37 @@
-// Copyright (C) 2025 The Android Open Source Project
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
-
 filegroup {
     name: "framework-npumanager-sources",
     srcs: [
-        "java/**/*.java",
-        "java/**/*.aidl",
+        "java/android/npumanager/*.java",
+        "java/android/npumanager/*.aidl",
+        "java/android/npumanager/aidl/*.aidl",
     ],
     path: "java",
     visibility: [
-        "//frameworks/base",
-        "//packages/modules/NpuManager:__subpackages__",
+        "//frameworks/base/api",
+        "//packages/modules/npumanager:__subpackages__",
     ],
 }
 
 java_sdk_library {
     name: "framework-npumanager",
-    srcs: [":framework-npumanager-sources"],
-    defaults: ["framework-module-defaults"],
     permitted_packages: [
         "android.npumanager",
         "com.android.npumanager",
     ],
-    impl_library_visibility: ["//packages/modules/NpuManager:__subpackages__"],
+    srcs: [":framework-npumanager-sources"],
+    defaults: ["framework-module-defaults"],
     apex_available: ["com.android.npumanager"],
-    sdk_version: "module_current",
     min_sdk_version: "36",
+    impl_library_visibility: [
+        "//packages/modules/NpuManager:__subpackages__",
+        "//vendor:__subpackages__",
+    ],
+    static_libs: [
+        "modules-utils-build",
+        "npumanager_aconfig_flags_lib",
+
+    ],
     unsafe_ignore_missing_latest_api: true,
-    libs: ["framework-annotations-lib"],
-    static_libs: ["npumanager_flags_lib"],
+    jarjar_rules: "jarjar-rules.txt",
+
 }
