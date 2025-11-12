@@ -21,6 +21,8 @@ import static android.npumanager.NpuManager.NPU_MODEL_POLICY_STATUS_QUO;
 import static android.os.Process.SYSTEM_UID;
 
 import android.annotation.FlaggedApi;
+import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.annotation.PermissionManuallyEnforced;
 import android.annotation.SystemService;
 import android.app.ActivityManager;
@@ -32,15 +34,19 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.FeatureInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.hardware.npu.IScheduling;
+import android.hardware.npu.SchedulingConfig;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.aidl.INpuManagerService;
 import android.os.Binder;
 import android.os.Bundle;
+import android.os.IBinder;
+import android.os.Process;
+import android.os.RemoteException;
+import android.os.ServiceManager;
 import android.os.UserHandle;
 import android.util.Log;
-
 import com.android.npumanager.Flags;
-
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -49,11 +55,15 @@ import java.util.List;
 public final class NpuManagerServiceImpl extends INpuManagerService.Stub
         implements ActivityManager.OnUidImportanceListener {
     private static final String TAG = "NpuManagerService";
-    private final Context mContext;
-    private HashMap<String, Integer> mNpuPackages = new HashMap<>();
+    @NonNull private final Context mContext;
+    private final HashMap<String, Integer> mNpuPackages = new HashMap<>();
     private NpuModelLoadingPolicy mNpuModelLoadingPolicy;
+    @Nullable private IScheduling mScheduling;
 
-    public NpuManagerServiceImpl(Context context) {
+    public NpuManagerServiceImpl(@NonNull Context context) {
+        if (context == null) {
+            throw new IllegalArgumentException("Context must not be null");
+        }
         mNpuModelLoadingPolicy = new StatusQuoModelLoadingPolicy();
         mContext = context;
         if (!Flags.npumanagerEnabled()) {
@@ -94,9 +104,38 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
         return false;
     }
 
+    private void ensureHalService() {
+        if (mScheduling != null) {
+            return;
+        }
+        IBinder binder = ServiceManager.waitForDeclaredService(IScheduling.DESCRIPTOR + "/default");
+        mScheduling = IScheduling.Stub.asInterface(binder);
+        if (mScheduling == null) {
+            throw new IllegalStateException("Failed to get IScheduling service");
+        }
+    }
+
     @Override
     public void onUidImportance(int uid, int importance) {
         Log.d(TAG, "onUidImportance: " + uid + " " + importance);
+        ensureHalService();
+        SchedulingConfig[] configs = new SchedulingConfig[1];
+        configs[0] = new SchedulingConfig();
+        configs[0].priority = importance;
+        configs[0].uid = uid;
+        configs[0].hasDirectAccess = true;
+        configs[0].canAttributeOtherUid = canUidAttributeOtherUid(uid);
+        try {
+            if (mScheduling != null) {
+                mScheduling.updateSchedulingConfigs(configs);
+            }
+        } catch (RemoteException e) {
+            Log.e(TAG, "Failed to update scheduling configs", e);
+        }
+    }
+
+    private boolean canUidAttributeOtherUid(int uid) {
+        return uid == Process.SYSTEM_UID || uid == Process.ROOT_UID;
     }
 
     BroadcastReceiver mReceiver =
