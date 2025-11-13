@@ -30,6 +30,8 @@ import android.npumanager.ModelLoadRequestCallback;
 import android.npumanager.NpuManager;
 import android.os.RemoteException;
 import android.platform.test.annotations.RequiresFlagsEnabled;
+import android.platform.test.flag.junit.CheckFlagsRule;
+import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 import androidx.test.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 import com.android.compatibility.common.util.RequiredFeatureRule;
@@ -52,7 +54,10 @@ public class CtsNpuModelManagerTest {
         mUiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
     }
 
-    @Rule
+    @Rule(order = 1)
+    public final CheckFlagsRule checkFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
+
+    @Rule(order = 0)
     public RequiredFeatureRule REQUIRES_NPU_RULE =
             new RequiredFeatureRule(PackageManager.FEATURE_NEURAL_PROCESSING_UNIT);
 
