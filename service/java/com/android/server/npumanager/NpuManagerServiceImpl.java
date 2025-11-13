@@ -20,7 +20,6 @@ import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_STATUS_QUO;
 import static android.os.Process.SYSTEM_UID;
 
-import android.annotation.FlaggedApi;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.PermissionManuallyEnforced;
@@ -37,7 +36,8 @@ import android.content.pm.PackageManager;
 import android.hardware.npu.IScheduling;
 import android.hardware.npu.SchedulingConfig;
 import android.npumanager.IModelLoadCallback;
-import android.npumanager.aidl.INpuManagerService;
+import android.npumanager.INpuManagerService;
+import android.npumanager.ModelLoadRequest;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -93,8 +93,10 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
         context.registerReceiver(mReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
     }
 
-    @FlaggedApi(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     boolean doesPackageUseNpuFeature(PackageInfo packageInfo) {
+        if (!Flags.npumanagerEnabled()) {
+            return false;
+        }
         if (packageInfo.reqFeatures == null) return false;
         for (FeatureInfo featureInfo : packageInfo.reqFeatures) {
             if (PackageManager.FEATURE_NEURAL_PROCESSING_UNIT.equals(featureInfo.name)) {
@@ -214,28 +216,36 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
     /** Callback will be called when it is advisable to load the model. */
     @Override
     @PermissionManuallyEnforced
-    public void canLoadModel(int size, int priority, IModelLoadCallback callback) {
+    public void canLoadModel(ModelLoadRequest request, IModelLoadCallback callback) {
         enforceModelManagerPermissions(mContext);
-        mNpuModelLoadingPolicy.canLoadModel(size, priority, callback);
+        mNpuModelLoadingPolicy.canLoadModel(request, callback);
     }
 
-    /** Inform the system that a model of size sizeMB has been loaded. */
+    /** Cancel the request to load the model. */
     @Override
     @PermissionManuallyEnforced
-    public void notifyModelLoaded(int size, IModelLoadCallback callback) {
+    public void cancelModelLoad(ModelLoadRequest request) {
         enforceModelManagerPermissions(mContext);
-        mNpuModelLoadingPolicy.handleModelLoaded(size, callback);
+        mNpuModelLoadingPolicy.cancelModelLoad(request);
+    }
+
+    /** Inform the system that the model for the request has been loaded. */
+    @Override
+    @PermissionManuallyEnforced
+    public void notifyModelLoaded(ModelLoadRequest request) {
+        enforceModelManagerPermissions(mContext);
+        mNpuModelLoadingPolicy.handleModelLoaded(request);
     }
 
     /**
-     * Inform the system that a model of sizeMB has been unloaded. Callback should be provided to
-     * match with previous calls to notifyModelLoaded.
+     * Inform the system that the model has been unloaded. Callback should be provided to match with
+     * previous calls to notifyModelLoaded.
      */
     @Override
     @PermissionManuallyEnforced
-    public void notifyModelUnloaded(int size, IModelLoadCallback callback) {
+    public void notifyModelUnloaded(ModelLoadRequest request) {
         enforceModelManagerPermissions(mContext);
-        mNpuModelLoadingPolicy.handleModelUnload(size, callback);
+        mNpuModelLoadingPolicy.handleModelUnload(request);
     }
 
     /** Set the model loading policy. */
