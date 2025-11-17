@@ -19,7 +19,7 @@ package android.npumanager;
 import android.annotation.SystemApi;
 import android.app.SystemServiceRegistry;
 import android.content.Context;
-import android.npumanager.aidl.INpuManagerService;
+import android.npumanager.INpuManagerService;
 
 /** @hide */
 @SystemApi(client = SystemApi.Client.MODULE_LIBRARIES)

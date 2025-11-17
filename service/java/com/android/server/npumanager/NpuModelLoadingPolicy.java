@@ -17,6 +17,7 @@
 package com.android.server.npumanager;
 
 import android.npumanager.IModelLoadCallback;
+import android.npumanager.ModelLoadRequest;
 
 /** A policy for determining when a model can be loaded. */
 abstract class NpuModelLoadingPolicy {
@@ -27,22 +28,24 @@ abstract class NpuModelLoadingPolicy {
      * @param priority The priority of the model to load.
      * @param callback The callback to be called when it is advisable to load the model.
      */
-    abstract void canLoadModel(int size, int priority, IModelLoadCallback callback);
+    abstract void canLoadModel(ModelLoadRequest request, IModelLoadCallback callback);
+
+    abstract void cancelModelLoad(ModelLoadRequest request);
 
     /**
      * Inform the system that a model of size sizeMB has been loaded.
      *
      * @param size The size of the model that was loaded.
-     * @param callback The callback that was passed to canLoadModel.
+     * @param request The request that was passed to canLoadModel.
      */
-    abstract void handleModelLoaded(int size, IModelLoadCallback callback);
+    abstract void handleModelLoaded(ModelLoadRequest request);
 
     /**
      * Inform the system that a model of sizeMB has been unloaded. Callback should be provided to
      * match with previous calls to notifyModelLoaded.
      *
      * @param size The size of the model that was unload.
-     * @param callback The callback to be called when it is advisable to load the model.
+     * @param request The request that was passed to canLoadModel.
      */
-    abstract void handleModelUnload(int size, IModelLoadCallback callback);
+    abstract void handleModelUnload(ModelLoadRequest request);
 }

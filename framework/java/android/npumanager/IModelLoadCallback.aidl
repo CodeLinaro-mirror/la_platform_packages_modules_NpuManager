@@ -13,12 +13,16 @@
 // limitations under the License.
 
 package android.npumanager;
+
+import android.npumanager.ModelLoadRequest;
+
 /**
  * Callback interface for model load requests.
  *
  * @hide
  */
-interface IModelLoadCallback {
-  void onCanLoadModel(in int size, in int status);
-  void onRequestUnloadModel(in int size);
+oneway interface IModelLoadCallback {
+  void onCanLoadModel(in ModelLoadRequest request,in int status);
+  void onRequestUnloadModel(in ModelLoadRequest request);
+  void onModelLoadRequestComplete(in ModelLoadRequest request, in int status);
 }

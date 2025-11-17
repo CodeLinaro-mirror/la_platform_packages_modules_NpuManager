@@ -3,7 +3,6 @@ filegroup {
     srcs: [
         "java/android/npumanager/*.java",
         "java/android/npumanager/*.aidl",
-        "java/android/npumanager/aidl/*.aidl",
     ],
     path: "java",
     visibility: [
@@ -27,9 +26,7 @@ java_sdk_library {
         "//vendor:__subpackages__",
     ],
     static_libs: [
-        "modules-utils-build",
         "npumanager_aconfig_flags_lib",
-
     ],
     unsafe_ignore_missing_latest_api: true,
     jarjar_rules: "jarjar-rules.txt",

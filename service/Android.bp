@@ -43,6 +43,7 @@ java_library {
         "framework-npumanager.stubs",
         "framework-npumanager.stubs.system",
         "framework-npumanager.impl",
+        "android.hardware.npu-V1-java",
     ],
     static_libs: [
         "npumanager_flags_lib",

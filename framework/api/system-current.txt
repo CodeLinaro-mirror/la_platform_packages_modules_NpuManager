@@ -1,14 +1,34 @@
 // Signature format: 2.0
 package android.npumanager {
 
+  @FlaggedApi("com.android.npumanager.npumanager_enabled") public class ModelLoadRequest implements android.os.Parcelable {
+    method public int describeContents();
+    method @IntRange(from=java.lang.Integer.MIN_VALUE, to=java.lang.Integer.MAX_VALUE) public int getId();
+    method @IntRange(from=android.npumanager.NpuManager.NPU_MODEL_PRIORITY_NORMAL, to=android.npumanager.NpuManager.NPU_MODEL_PRIORITY_BACKGROUND) public int getPriority();
+    method @IntRange(from=android.npumanager.NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB, to=android.npumanager.NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G) public int getSize();
+    method public void writeToParcel(android.os.Parcel, int);
+    field @NonNull public static final android.os.Parcelable.Creator<android.npumanager.ModelLoadRequest> CREATOR;
+  }
+
+  public static class ModelLoadRequest.Builder {
+    ctor public ModelLoadRequest.Builder(int);
+    method public android.npumanager.ModelLoadRequest build();
+    method public android.npumanager.ModelLoadRequest.Builder setPriority(int);
+    method public android.npumanager.ModelLoadRequest.Builder setSize(int);
+  }
+
   @FlaggedApi("com.android.npumanager.npumanager_enabled") public interface ModelLoadRequestCallback {
-    method public void onCanLoadModel(int, int, android.npumanager.NpuManager.ModelLoadStatusListener);
-    method public void onRequestUnloadModel(int, android.npumanager.NpuManager.ModelLoadStatusListener);
+    method public void onCanLoadModel(android.npumanager.ModelLoadRequest, int, android.npumanager.NpuManager.ModelLoadStatusListener);
+    method public void onModelLoadRequestComplete(android.npumanager.ModelLoadRequest, int);
+    method public void onRequestUnloadModel(android.npumanager.ModelLoadRequest);
   }
 
   @FlaggedApi("com.android.npumanager.npumanager_enabled") public final class NpuManager {
-    method @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API) public void requestLoadModel(int, int, @NonNull android.npumanager.ModelLoadRequestCallback) throws android.os.RemoteException;
+    method @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API) public void cancelModelLoad(@NonNull android.npumanager.ModelLoadRequest) throws android.os.RemoteException;
+    method @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API) public void requestLoadModel(android.npumanager.ModelLoadRequest, @NonNull android.npumanager.ModelLoadRequestCallback) throws android.os.RemoteException;
     method @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API) public void setPolicy(int, android.os.Bundle) throws android.os.RemoteException;
+    field public static final int NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED = 3; // 0x3
+    field public static final int NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE = 4; // 0x4
     field public static final int NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW = 0; // 0x0
     field public static final int NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED = 2; // 0x2
     field public static final int NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD = 1; // 0x1
@@ -21,8 +41,8 @@ package android.npumanager {
   }
 
   public class NpuManager.ModelLoadStatusListener {
-    method public void notifyModelLoaded(int) throws android.os.RemoteException;
-    method public void notifyModelUnloaded(int) throws android.os.RemoteException;
+    method public void notifyModelLoaded(android.npumanager.ModelLoadRequest) throws android.os.RemoteException;
+    method public void notifyModelUnloaded(android.npumanager.ModelLoadRequest) throws android.os.RemoteException;
   }
 
 }

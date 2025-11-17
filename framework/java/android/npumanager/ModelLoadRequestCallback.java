@@ -30,22 +30,28 @@ public interface ModelLoadRequestCallback {
     /**
      * The app can load the model with the specified size
      *
-     * @param sizeMB The size of the model that can be loaded.
      * @param status The status of the model load request.
      * @param listener A listener that should be called to notify the Model Manager that the model
      *     has been loaded.
      */
     public void onCanLoadModel(
-            int sizeMB,
+            ModelLoadRequest request,
             @NpuManager.NpuModelLoadStatus int status,
             NpuManager.ModelLoadStatusListener listener);
 
     /**
-     * The app should unload the model to free at least sizeMB
+     * The app should unload the model to free at least size
      *
-     * @param sizeMB The size of the model that should be unloaded.
-     * @param listener A listener that should be called to notify the Model Manager that the model
-     *     has been unloaded.
+     * @param request The model load request that resulted in the model being loaded and is now has
+     *     been unloaded.
      */
-    public void onRequestUnloadModel(int sizeMB, NpuManager.ModelLoadStatusListener listener);
+    public void onRequestUnloadModel(ModelLoadRequest request);
+
+    /**
+     * The model load request has completed and there will be no further updates to the request.
+     *
+     * @param status The status of the model load request.
+     */
+    public void onModelLoadRequestComplete(
+            ModelLoadRequest request, @NpuManager.NpuModelLoadStatus int status);
 }
