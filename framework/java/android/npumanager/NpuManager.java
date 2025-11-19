@@ -22,15 +22,13 @@ import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.PermissionManuallyEnforced;
-import android.annotation.RequiresPermission;
 import android.annotation.RequiresNoPermission;
+import android.annotation.RequiresPermission;
 import android.annotation.SystemApi;
 import android.annotation.SystemService;
 import android.content.Context;
-import android.npumanager.aidl.INpuManagerService;
 import android.os.Bundle;
 import android.os.RemoteException;
-
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
@@ -50,30 +48,43 @@ public final class NpuManager {
 
         ModelLoadCallbackWrapper(ModelLoadRequestCallback callback) {
             mCallback = callback;
-            mListener = new ModelLoadStatusListener(this);
+            mListener = new ModelLoadStatusListener();
         }
 
         /**
          * The app can load the model with the specified size.
          *
-         * @param sizeMB The size of the model to load in megabytes.
+         * @param request Object containing the model load request information.
          * @param status The status of the model load.
          * @hide
          */
         @RequiresNoPermission
-        public void onCanLoadModel(int sizeMB, @NpuModelLoadStatus int status) {
-            mCallback.onCanLoadModel(sizeMB, status, mListener);
+        public void onCanLoadModel(ModelLoadRequest request, @NpuModelLoadStatus int status) {
+            mCallback.onCanLoadModel(request, status, mListener);
         }
 
         /**
-         * The app should unload the model to free at least sizeMB.
+         * The app should unload the model to free at least size.
          *
-         * @param sizeMB The size of the model to unload in megabytes.
+         * @param request Object containing the model load request information.
          * @hide
          */
         @RequiresNoPermission
-        public void onRequestUnloadModel(int sizeMB) {
-            mCallback.onRequestUnloadModel(sizeMB, mListener);
+        public void onRequestUnloadModel(ModelLoadRequest request) {
+            mCallback.onRequestUnloadModel(request);
+        }
+
+        /**
+         * The model request has completed either successfully or due to cancellation and there will
+         * be no further statys updates to the request.
+         *
+         * @param request The model load request that has completed.
+         * @hide
+         */
+        @RequiresNoPermission
+        public void onModelLoadRequestComplete(
+                ModelLoadRequest request, @NpuModelLoadRequestStatus int status) {
+            mCallback.onModelLoadRequestComplete(request, status);
         }
     }
 
@@ -110,6 +121,31 @@ public final class NpuManager {
      * @hide
      */
     @SystemApi public static final int NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED = 2;
+
+    /** @hide */
+    @SystemApi
+    @IntDef(
+            prefix = {"NPU_MODEL_LOAD_REQUEST_STATUS_"},
+            value = {
+                NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED,
+                NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE,
+            })
+    @Retention(RetentionPolicy.SOURCE)
+    @interface NpuModelLoadRequestStatus {}
+
+    /**
+     * The model load request has been cancelled.
+     *
+     * @hide
+     */
+    @SystemApi public static final int NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED = 3;
+
+    /**
+     * The model load request has completed and the model has been unloaded.
+     *
+     * @hide
+     */
+    @SystemApi public static final int NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE = 4;
 
     /** @hide */
     @SystemApi
@@ -200,18 +236,10 @@ public final class NpuManager {
         mNpuManagerService = service;
     }
 
-    private void enforceModelManagerPermissions() {
-        if (mContext.checkSelfPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API)
-                != PERMISSION_GRANTED) {
-            throw new SecurityException("Model Manager permission denied");
-        }
-    }
-
     /**
      * Check if the model of the specified size can be loaded.
      *
-     * @param size The size of the model to load.
-     * @param priority The priority of the model to load.
+     * @param request The model load request.
      * @param callback The callback to be called when it is advisable to load the model and
      *     intermediary status updates when it is not yet advisable to load the model.
      * @hide
@@ -219,47 +247,49 @@ public final class NpuManager {
     @SystemApi
     @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API)
     public void requestLoadModel(
-            @NpuModelSize int size,
-            @NpuModelPriority int priority,
-            @NonNull ModelLoadRequestCallback callback)
+            ModelLoadRequest request, @NonNull ModelLoadRequestCallback callback)
             throws RemoteException {
-        enforceModelManagerPermissions();
-        mNpuManagerService.canLoadModel(size, priority, getWrapperForCallback(callback));
+        mNpuManagerService.canLoadModel(request, getWrapperForCallback(callback));
+    }
+
+    /**
+     * Cancel a model load request.
+     *
+     * @param request The model load request to cancel.
+     * @hide
+     */
+    @SystemApi
+    @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API)
+    public void cancelModelLoad(@NonNull ModelLoadRequest request) throws RemoteException {
+        mNpuManagerService.cancelModelLoad(request);
     }
 
     public class ModelLoadStatusListener {
-        IModelLoadCallback.Stub mCallback;
 
-        ModelLoadStatusListener(IModelLoadCallback.Stub callback) {
-            mCallback = callback;
-        }
+        ModelLoadStatusListener() {}
 
         /**
          * Inform the system that a model of size {@code size} has been loaded.
          *
-         * @param size The size of the model to load.
-         * @param callback The callback to be called when it is advisable to load the model.
+         * @param request The model load request for which this model has been loaded.
          * @hide
          */
         @SystemApi
         @PermissionManuallyEnforced
-        public void notifyModelLoaded(@NpuModelSize int size) throws RemoteException {
-            enforceModelManagerPermissions();
-            mNpuManagerService.notifyModelLoaded(size, mCallback);
+        public void notifyModelLoaded(ModelLoadRequest request) throws RemoteException {
+            mNpuManagerService.notifyModelLoaded(request);
         }
 
         /**
          * Inform the system that a model of size {@code size} has been unloaded.
          *
-         * @param size The size of the model to unload.
-         * @param callback The callback to be called when it is advisable to load the model.
+         * @param request The model load request for which this model has been unloaded.
          * @hide
          */
         @SystemApi
         @PermissionManuallyEnforced
-        public void notifyModelUnloaded(@NpuModelSize int size) throws RemoteException {
-            enforceModelManagerPermissions();
-            mNpuManagerService.notifyModelUnloaded(size, mCallback);
+        public void notifyModelUnloaded(ModelLoadRequest request) throws RemoteException {
+            mNpuManagerService.notifyModelUnloaded(request);
         }
     }
 
@@ -273,7 +303,6 @@ public final class NpuManager {
     @SystemApi
     @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API)
     public void setPolicy(@NpuModelPolicy int policy, Bundle policyParams) throws RemoteException {
-        enforceModelManagerPermissions();
         mNpuManagerService.setPolicy(policy, policyParams);
     }
 }
