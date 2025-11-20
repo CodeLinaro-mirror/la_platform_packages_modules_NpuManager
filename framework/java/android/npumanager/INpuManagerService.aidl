@@ -14,22 +14,25 @@
  * limitations under the License.
  */
 
-package android.npumanager.aidl;
+package android.npumanager;
 
 import android.npumanager.IModelLoadCallback;
+import android.npumanager.ModelLoadRequest;
 import android.os.Bundle;
 
 /**
  * Binder interface to communicate with the NpuManagerService.
  * @hide
  */
-oneway interface INpuManagerService {
+interface INpuManagerService {
     @PermissionManuallyEnforced
-    void canLoadModel(int size, int priority, in IModelLoadCallback callback);
+    void canLoadModel(in ModelLoadRequest request, in IModelLoadCallback callback);
     @PermissionManuallyEnforced
-    void notifyModelLoaded(int size, in IModelLoadCallback callback);
+    void cancelModelLoad(in ModelLoadRequest request);
     @PermissionManuallyEnforced
-    void notifyModelUnloaded(int size, in IModelLoadCallback callback);
+    void notifyModelLoaded(in ModelLoadRequest request);
+    @PermissionManuallyEnforced
+    void notifyModelUnloaded(in ModelLoadRequest request);
     @PermissionManuallyEnforced
     void setPolicy(int policy, in Bundle policyParams);
 }
