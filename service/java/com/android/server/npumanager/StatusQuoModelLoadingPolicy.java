@@ -27,6 +27,7 @@ import android.os.RemoteException;
 import com.android.internal.annotations.GuardedBy;
 
 import java.util.HashMap;
+import java.util.Map;
 
 /**
  * A model loading policy that mimics the behavior prior to the introduction of the NpuModelManager.
@@ -34,6 +35,10 @@ import java.util.HashMap;
 class StatusQuoModelLoadingPolicy extends NpuModelLoadingPolicy {
     @GuardedBy("this")
     private HashMap<ModelLoadRequest, IModelLoadCallback> mCallbacks = new HashMap<>();
+
+    StatusQuoModelLoadingPolicy(Map<Integer, Integer> initialUidImportances) {
+        super(initialUidImportances);
+    }
 
     /** Callback will be called when it is advisable to load the model. */
     void canLoadModel(ModelLoadRequest request, IModelLoadCallback callback) {

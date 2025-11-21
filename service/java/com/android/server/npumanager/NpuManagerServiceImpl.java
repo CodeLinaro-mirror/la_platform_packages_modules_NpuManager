@@ -17,6 +17,7 @@
 package com.android.server.npumanager;
 
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
+import static android.npumanager.NpuManager.NPU_MODEL_POLICY_BUDGET;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_STATUS_QUO;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_TURN_TAKING;
 import static android.os.Process.SYSTEM_UID;
@@ -53,6 +54,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @SystemService(Context.NPU_SERVICE)
 public final class NpuManagerServiceImpl extends INpuManagerService.Stub
@@ -62,14 +64,15 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
     private final HashMap<String, Integer> mNpuPackages = new HashMap<>();
     private NpuModelLoadingPolicy mNpuModelLoadingPolicy;
     @Nullable private IScheduling mScheduling;
+    private final Map<Integer, Integer> mUidImportanceMap = new HashMap<>();
 
     public NpuManagerServiceImpl(@NonNull Context context) {
         if (context == null) {
             throw new IllegalArgumentException("Context must not be null");
         }
-        mNpuModelLoadingPolicy = new StatusQuoModelLoadingPolicy();
         mContext = context;
         if (!Flags.npumanagerEnabled()) {
+            mNpuModelLoadingPolicy = new StatusQuoModelLoadingPolicy(mUidImportanceMap);
             return;
         }
         PackageManager pm = context.getPackageManager();
@@ -91,9 +94,20 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
                         .toArray();
         activityManager.addOnUidImportanceListener(this, 0, uids);
         List<RunningAppProcessInfo> processes = activityManager.getRunningAppProcesses();
+        if (processes != null) {
+            for (RunningAppProcessInfo process : processes) {
+                if (mNpuPackages.containsValue(process.uid)) {
+                    mUidImportanceMap.put(process.uid, process.importance);
+                }
+            }
+        }
+
+        mNpuModelLoadingPolicy = new StatusQuoModelLoadingPolicy(mUidImportanceMap);
+
         if (processes == null) {
             return;
         }
+
         ArrayList<SchedulingConfig> configs = new ArrayList<>();
         for (RunningAppProcessInfo process : processes) {
             if (mNpuPackages.containsValue(process.uid)) {
@@ -218,6 +232,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
                         + ", packages="
                         + Arrays.toString(mContext.getPackageManager().getPackagesForUid(uid)));
 
+        mUidImportanceMap.put(uid, importance);
         mNpuModelLoadingPolicy.onUidImportance(uid, importance);
 
         ensureHalService();
@@ -294,8 +309,11 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
         enforceModelManagerPermissions(mContext);
         mNpuModelLoadingPolicy =
                 switch (policy) {
-                    case NPU_MODEL_POLICY_STATUS_QUO -> new StatusQuoModelLoadingPolicy();
-                    case NPU_MODEL_POLICY_TURN_TAKING -> new TurnTakingModelLoadingPolicy();
+                    case NPU_MODEL_POLICY_STATUS_QUO ->
+                            new StatusQuoModelLoadingPolicy(mUidImportanceMap);
+                    case NPU_MODEL_POLICY_TURN_TAKING ->
+                            new TurnTakingModelLoadingPolicy(mUidImportanceMap);
+                    case NPU_MODEL_POLICY_BUDGET -> new BudgetModelLoadingPolicy(mUidImportanceMap);
                     default -> throw new IllegalArgumentException("Unsupported policy: " + policy);
                 };
     }

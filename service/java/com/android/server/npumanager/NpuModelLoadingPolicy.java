@@ -22,12 +22,20 @@ import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /** A policy for determining when a model can be loaded. */
 abstract class NpuModelLoadingPolicy {
     private static final String TAG = "NpuModelLoadingPolicy";
-    protected Map<Integer, Integer> mUidImportanceMap = new HashMap<>();
+
+    // TODO(b/462709308) should lock this.
+    protected Map<Integer, Integer> mUidImportanceMap;
+
+    NpuModelLoadingPolicy(Map<Integer, Integer> initialUidImportances) {
+        mUidImportanceMap = new HashMap<>(initialUidImportances);
+    }
 
     /**
      * Callback will be called when it is advisable to load the model.
@@ -80,5 +88,16 @@ abstract class NpuModelLoadingPolicy {
 
     protected int getUidImportance(int uid) {
         return mUidImportanceMap.getOrDefault(uid, IMPORTANCE_GONE);
+    }
+
+    protected List<Integer> getMostImportantUids() {
+        return mUidImportanceMap.entrySet().stream()
+                .sorted(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+    }
+
+    protected List<Integer> getLeastImportantUids() {
+        return getMostImportantUids().reversed();
     }
 }
