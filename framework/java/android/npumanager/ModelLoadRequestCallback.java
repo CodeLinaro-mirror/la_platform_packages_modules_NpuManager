@@ -28,7 +28,21 @@ import android.annotation.SystemApi;
 @FlaggedApi(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
 public interface ModelLoadRequestCallback {
     /**
-     * The app can load the model with the specified size
+     * Callback delivering the status of the model load request.
+     *
+     * <p>When the status is {@link NpuManager#NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW}, the app can load
+     * the model. The app should call {@link
+     * ModelLoadStatusListener#notifyModelLoaded(ModelLoadRequest)} on {@code listener} to notify
+     * the Model Manager that the model has been loaded.
+     *
+     * <p>When the status is {@link NpuManager#NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD}, the system is
+     * in the process of unloading a model to free up memory such that this model load can proceed.
+     * The app should receive a call to {@link #onCanLoadModel(ModelLoadRequest)} soon and should
+     * wait for that to load the model.
+     *
+     * <p>When the status is {@link NpuManager#NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED}, the app is
+     * not currently a high enough priority to load the model. There may be higher priority jobs
+     * that need to complete before the model load may proceed.
      *
      * @param status The status of the model load request.
      * @param listener A listener that should be called to notify the Model Manager that the model
@@ -40,7 +54,7 @@ public interface ModelLoadRequestCallback {
             NpuManager.ModelLoadStatusListener listener);
 
     /**
-     * The app should unload the model to free at least size
+     * The app should unload the model to free up memory.
      *
      * @param request The model load request that resulted in the model being loaded and is now has
      *     been unloaded.
