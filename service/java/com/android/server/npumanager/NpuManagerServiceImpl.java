@@ -25,6 +25,7 @@ import android.annotation.Nullable;
 import android.annotation.PermissionManuallyEnforced;
 import android.annotation.SystemService;
 import android.app.ActivityManager;
+import android.app.ActivityManager.RunningAppProcessInfo;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -47,6 +48,7 @@ import android.os.ServiceManager;
 import android.os.UserHandle;
 import android.util.Log;
 import com.android.npumanager.Flags;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -91,6 +93,30 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
         filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
         filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
         context.registerReceiver(mReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        List<RunningAppProcessInfo> processes = activityManager.getRunningAppProcesses();
+        if (processes == null) {
+            return;
+        }
+        ArrayList<SchedulingConfig> configs = new ArrayList<>();
+        for (RunningAppProcessInfo process : processes) {
+            if (mNpuPackages.containsValue(process.uid)) {
+                SchedulingConfig config = new SchedulingConfig();
+                config.priority = process.importance;
+                config.uid = process.uid;
+                config.hasDirectAccess = true;
+                config.canAttributeOtherUid = canUidAttributeOtherUid(process.uid);
+                configs.add(config);
+            }
+        }
+        ensureHalService();
+        try {
+            if (mScheduling != null) {
+                mScheduling.setSchedulingConfigs(
+                        configs.toArray(new SchedulingConfig[configs.size()]));
+            }
+        } catch (RemoteException e) {
+            Log.e(TAG, "Failed to update scheduling configs", e);
+        }
     }
 
     boolean doesPackageUseNpuFeature(PackageInfo packageInfo) {
