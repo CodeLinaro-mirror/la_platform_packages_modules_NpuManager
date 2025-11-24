@@ -23,9 +23,7 @@ import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
 import android.os.RemoteException;
-
 import com.android.internal.annotations.GuardedBy;
-
 import java.util.HashMap;
 
 /**
@@ -47,7 +45,7 @@ class StatusQuoModelLoadingPolicy extends NpuModelLoadingPolicy {
         }
     }
 
-    void handleModelLoadCancelled(ModelLoadRequest request) {
+    void cancelModelLoad(ModelLoadRequest request) {
         try {
             IModelLoadCallback callback;
             synchronized (this) {
@@ -69,7 +67,7 @@ class StatusQuoModelLoadingPolicy extends NpuModelLoadingPolicy {
     void handleModelLoaded(ModelLoadRequest request) {}
 
     /** Inform the system that a model of sizeMB has been unloaded. */
-    void handleModelUnloaded(ModelLoadRequest request) {
+    void handleModelUnload(ModelLoadRequest request) {
         try {
             IModelLoadCallback callback;
             synchronized (this) {

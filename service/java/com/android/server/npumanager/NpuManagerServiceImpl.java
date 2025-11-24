@@ -18,7 +18,6 @@ package com.android.server.npumanager;
 
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_STATUS_QUO;
-import static android.npumanager.NpuManager.NPU_MODEL_POLICY_TURN_TAKING;
 import static android.os.Process.SYSTEM_UID;
 
 import android.annotation.NonNull;
@@ -27,7 +26,10 @@ import android.annotation.PermissionManuallyEnforced;
 import android.annotation.SystemService;
 import android.app.ActivityManager;
 import android.app.ActivityManager.RunningAppProcessInfo;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.FeatureInfo;
 import android.content.pm.PackageInfo;
@@ -45,10 +47,7 @@ import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.UserHandle;
 import android.util.Log;
-
-import com.android.internal.content.PackageMonitor;
 import com.android.npumanager.Flags;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -73,7 +72,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
             return;
         }
         PackageManager pm = context.getPackageManager();
-        List<PackageInfo> packages = pm.getInstalledPackages(PackageManager.GET_CONFIGURATIONS);
+        List<PackageInfo> packages = pm.getInstalledPackages(0);
         for (PackageInfo packageInfo : packages) {
             if (doesPackageUseNpuFeature(packageInfo)) {
                 ApplicationInfo appInfo = packageInfo.applicationInfo;
@@ -83,13 +82,17 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
                 break;
             }
         }
-
-        ActivityManager activityManager = mContext.getSystemService(ActivityManager.class);
+        ActivityManager activityManager = context.getSystemService(ActivityManager.class);
         int[] uids =
                 Arrays.stream(mNpuPackages.values().toArray(new Integer[0]))
                         .mapToInt(Integer::intValue)
                         .toArray();
         activityManager.addOnUidImportanceListener(this, 0, uids);
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_PACKAGE_ADDED);
+        filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
+        context.registerReceiver(mReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         List<RunningAppProcessInfo> processes = activityManager.getRunningAppProcesses();
         if (processes == null) {
             return;
@@ -113,73 +116,6 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
             }
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to update scheduling configs", e);
-        }
-
-        NpuPackageMonitor npuPackageMonitor = new NpuPackageMonitor();
-        npuPackageMonitor.register(context, UserHandle.ALL, context.getMainThreadHandler());
-    }
-
-    private void updateUidListener() {
-        ActivityManager activityManager = mContext.getSystemService(ActivityManager.class);
-        int[] uids =
-                Arrays.stream(mNpuPackages.values().toArray(new Integer[0]))
-                        .mapToInt(Integer::intValue)
-                        .toArray();
-        activityManager.removeOnUidImportanceListener(this);
-        activityManager.addOnUidImportanceListener(this, 0, uids);
-    }
-
-    private class NpuPackageMonitor extends PackageMonitor {
-
-        NpuPackageMonitor() {
-            super(true);
-        }
-
-        @Override
-        public void onPackageAdded(String packageName, int uid) {
-            try {
-                PackageManager pm = mContext.getPackageManager();
-                PackageInfo packageInfo =
-                        pm.getPackageInfo(packageName, PackageManager.GET_CONFIGURATIONS);
-                if (doesPackageUseNpuFeature(packageInfo)) {
-                    mNpuPackages.put(packageName, uid);
-                    updateUidListener();
-                }
-            } catch (PackageManager.NameNotFoundException e) {
-                Log.e(TAG, "Package not found after onPackageAdded: " + packageName, e);
-            }
-        }
-
-        @Override
-        public void onPackageRemoved(String packageName, int uid) {
-            if (mNpuPackages.containsKey(packageName)) {
-                mNpuPackages.remove(packageName);
-                updateUidListener();
-            }
-        }
-
-        @Override
-        public void onPackageModified(String packageName) {
-            try {
-                PackageManager pm = mContext.getPackageManager();
-                PackageInfo packageInfo =
-                        pm.getPackageInfo(packageName, PackageManager.GET_CONFIGURATIONS);
-                boolean hasNpuFeature = doesPackageUseNpuFeature(packageInfo);
-                boolean wasInMap = mNpuPackages.containsKey(packageName);
-
-                if (wasInMap && !hasNpuFeature) {
-                    mNpuPackages.remove(packageName);
-                    updateUidListener();
-                } else if (!wasInMap && hasNpuFeature) {
-                    ApplicationInfo appInfo = packageInfo.applicationInfo;
-                    if (appInfo != null) {
-                        mNpuPackages.put(packageName, appInfo.uid);
-                        updateUidListener();
-                    }
-                }
-            } catch (PackageManager.NameNotFoundException e) {
-                Log.e(TAG, "Package not found after onPackageModified: " + packageName, e);
-            }
         }
     }
 
@@ -209,17 +145,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
 
     @Override
     public void onUidImportance(int uid, int importance) {
-        Log.d(
-                TAG,
-                "onUidImportance: uid="
-                        + uid
-                        + ", importance="
-                        + importance
-                        + ", packages="
-                        + Arrays.toString(mContext.getPackageManager().getPackagesForUid(uid)));
-
-        mNpuModelLoadingPolicy.onUidImportance(uid, importance);
-
+        Log.d(TAG, "onUidImportance: " + uid + " " + importance);
         ensureHalService();
         SchedulingConfig[] configs = new SchedulingConfig[1];
         configs[0] = new SchedulingConfig();
@@ -240,6 +166,68 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
         return uid == Process.SYSTEM_UID || uid == Process.ROOT_UID;
     }
 
+    BroadcastReceiver mReceiver =
+            new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    if (intent != null) {
+                        PackageManager pm = context.getPackageManager();
+
+                        String action = intent.getAction();
+                        String packageName = intent.getData().getSchemeSpecificPart();
+                        try {
+                            PackageInfo packageInfo = pm.getPackageInfo(packageName, 0);
+
+                            boolean updateListener = false;
+                            if (Intent.ACTION_PACKAGE_ADDED.equals(action)) {
+                                if (doesPackageUseNpuFeature(packageInfo)) {
+                                    ApplicationInfo appInfo = packageInfo.applicationInfo;
+                                    if (appInfo != null) {
+                                        mNpuPackages.put(packageInfo.packageName, appInfo.uid);
+                                        updateListener = true;
+                                    }
+                                }
+                            } else if (Intent.ACTION_PACKAGE_REMOVED.equals(action)) {
+                                if (mNpuPackages.containsKey(packageName)) {
+                                    mNpuPackages.remove(packageName);
+                                    updateListener = true;
+                                }
+                            } else if (Intent.ACTION_PACKAGE_REPLACED.equals(action)) {
+                                if (mNpuPackages.containsKey(packageName)) {
+                                    if (!doesPackageUseNpuFeature(packageInfo)) {
+                                        mNpuPackages.remove(packageName);
+                                        updateListener = true;
+                                    }
+                                } else {
+                                    if (doesPackageUseNpuFeature(packageInfo)) {
+                                        ApplicationInfo appInfo = packageInfo.applicationInfo;
+                                        if (appInfo != null) {
+                                            mNpuPackages.put(packageInfo.packageName, appInfo.uid);
+                                            updateListener = true;
+                                        }
+                                    }
+                                }
+                            }
+                            if (updateListener) {
+                                ActivityManager activityManager =
+                                        context.getSystemService(ActivityManager.class);
+                                int[] uids =
+                                        Arrays.stream(mNpuPackages.values().toArray(new Integer[0]))
+                                                .mapToInt(Integer::intValue)
+                                                .toArray();
+                                activityManager.removeOnUidImportanceListener(
+                                        NpuManagerServiceImpl.this);
+                                activityManager.addOnUidImportanceListener(
+                                        NpuManagerServiceImpl.this, 0, uids);
+                            }
+
+                        } catch (PackageManager.NameNotFoundException nnfe) {
+                            Log.e(TAG, "package name from broadcast not found", nnfe);
+                        }
+                    }
+                }
+            };
+
     static void enforceModelManagerPermissions(Context context) {
         if (UserHandle.getAppId(Binder.getCallingUid()) == SYSTEM_UID) {
             return;
@@ -255,7 +243,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
     @Override
     @PermissionManuallyEnforced
     public void canLoadModel(ModelLoadRequest request, IModelLoadCallback callback) {
-        Log.d(TAG, "canLoadModel: request=" + request);
+        enforceModelManagerPermissions(mContext);
         mNpuModelLoadingPolicy.canLoadModel(request, callback);
     }
 
@@ -263,15 +251,15 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
     @Override
     @PermissionManuallyEnforced
     public void cancelModelLoad(ModelLoadRequest request) {
-        Log.d(TAG, "cancelModelLoad: request=" + request);
-        mNpuModelLoadingPolicy.handleModelLoadCancelled(request);
+        enforceModelManagerPermissions(mContext);
+        mNpuModelLoadingPolicy.cancelModelLoad(request);
     }
 
     /** Inform the system that the model for the request has been loaded. */
     @Override
     @PermissionManuallyEnforced
     public void notifyModelLoaded(ModelLoadRequest request) {
-        Log.d(TAG, "notifyModelLoaded: request=" + request);
+        enforceModelManagerPermissions(mContext);
         mNpuModelLoadingPolicy.handleModelLoaded(request);
     }
 
@@ -282,20 +270,18 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
     @Override
     @PermissionManuallyEnforced
     public void notifyModelUnloaded(ModelLoadRequest request) {
-        Log.d(TAG, "notifyModelUnloaded: request=" + request);
-        mNpuModelLoadingPolicy.handleModelUnloaded(request);
+        enforceModelManagerPermissions(mContext);
+        mNpuModelLoadingPolicy.handleModelUnload(request);
     }
 
     /** Set the model loading policy. */
     @Override
     @PermissionManuallyEnforced
     public void setPolicy(int policy, Bundle policyParams) {
-        Log.d(TAG, "setPolicy: policy=" + policy);
         enforceModelManagerPermissions(mContext);
         mNpuModelLoadingPolicy =
                 switch (policy) {
                     case NPU_MODEL_POLICY_STATUS_QUO -> new StatusQuoModelLoadingPolicy();
-                    case NPU_MODEL_POLICY_TURN_TAKING -> new TurnTakingModelLoadingPolicy();
                     default -> throw new IllegalArgumentException("Unsupported policy: " + policy);
                 };
     }

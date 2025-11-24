@@ -16,6 +16,7 @@
 
 package android.npumanager;
 
+import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 
 import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
@@ -28,7 +29,6 @@ import android.annotation.SystemService;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.RemoteException;
-
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
@@ -211,7 +211,6 @@ public final class NpuManager {
             prefix = {"NPU_MODEL_POLICY_"},
             value = {
                 NPU_MODEL_POLICY_STATUS_QUO,
-                NPU_MODEL_POLICY_TURN_TAKING,
             })
     @Retention(RetentionPolicy.SOURCE)
     @interface NpuModelPolicy {}
@@ -222,16 +221,6 @@ public final class NpuManager {
      * @hide
      */
     @SystemApi public static final int NPU_MODEL_POLICY_STATUS_QUO = 0;
-
-    /**
-     * A model loading policy that allows one model to be loaded at a time.
-     *
-     * <p>UIDs with higher {@link ActivityManager} priority will get higher model load priority.
-     * When a model is unloaded, the next highest priority UID will be allowed to load a model.
-     *
-     * @hide
-     */
-    @SystemApi public static final int NPU_MODEL_POLICY_TURN_TAKING = 1;
 
     private final INpuManagerService mNpuManagerService;
 

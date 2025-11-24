@@ -16,69 +16,36 @@
 
 package com.android.server.npumanager;
 
-import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_GONE;
-
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
 
-import java.util.HashMap;
-import java.util.Map;
-
 /** A policy for determining when a model can be loaded. */
 abstract class NpuModelLoadingPolicy {
-    private static final String TAG = "NpuModelLoadingPolicy";
-    protected Map<Integer, Integer> mUidImportanceMap = new HashMap<>();
-
     /**
      * Callback will be called when it is advisable to load the model.
      *
-     * @param request Request options for loading models.
+     * @param size The size of the model to load.
+     * @param priority The priority of the model to load.
      * @param callback The callback to be called when it is advisable to load the model.
      */
     abstract void canLoadModel(ModelLoadRequest request, IModelLoadCallback callback);
 
-    /**
-     * Called when a model load is cancelled.
-     *
-     * @param request The request that was passed to {@link canLoadModel}.
-     */
-    abstract void handleModelLoadCancelled(ModelLoadRequest request);
+    abstract void cancelModelLoad(ModelLoadRequest request);
 
     /**
-     * Called when a model is loaded.
+     * Inform the system that a model of size sizeMB has been loaded.
      *
-     * @param request The request that was passed to {@link canLoadModel}.
+     * @param size The size of the model that was loaded.
+     * @param request The request that was passed to canLoadModel.
      */
     abstract void handleModelLoaded(ModelLoadRequest request);
 
     /**
-     * Called when a model is unloaded.
+     * Inform the system that a model of sizeMB has been unloaded. Callback should be provided to
+     * match with previous calls to notifyModelLoaded.
      *
-     * @param request The request that was passed to {@link canLoadModel}.
+     * @param size The size of the model that was unload.
+     * @param request The request that was passed to canLoadModel.
      */
-    abstract void handleModelUnloaded(ModelLoadRequest request);
-
-    /**
-     * Inform the policy of a change in UID importance.
-     *
-     * @param uid The uid that has changed importance.
-     * @param importance The new importance value.
-     */
-    final void onUidImportance(int uid, int importance) {
-        mUidImportanceMap.put(uid, importance);
-        onUidImportanceInternal(uid, importance);
-    }
-
-    /**
-     * Called when a UID importance changes. Should be overridden by subclasses to execute any
-     * policy specific logic when UID priority changes.
-     *
-     * @param uid The uid that has changed importance.
-     * @param importance The new importance value.
-     */
-    void onUidImportanceInternal(int uid, int importance) {}
-
-    protected int getUidImportance(int uid) {
-        return mUidImportanceMap.getOrDefault(uid, IMPORTANCE_GONE);
-    }
+    abstract void handleModelUnload(ModelLoadRequest request);
 }

@@ -40,6 +40,5 @@
         android:label="Delegate App Snippet"
         />
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NPU_MODEL_MANAGER_API" />
-    <uses-feature android:name="android.hardware.npu" android:required="true"/>
+
 </manifest>
