@@ -22,4 +22,22 @@
     android:gravity="center"
     tools:context=".MainActivity"
     android:label="">
+    <TextView
+        android:id="@+id/text_view_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Status Info Here"
+        android:layout_marginBottom="8dp"/>
+    <Button
+        android:id="@+id/load_model_btn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Load Model and Run Inference"
+        android:layout_marginBottom="8dp"/>
+
+    <Button
+        android:id="@+id/unload_model_btn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Unload model"/>
 </LinearLayout>

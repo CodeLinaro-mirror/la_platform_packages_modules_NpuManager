@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="android.npumanager.testapp">
+
+    <application>
+        <service
+            android:name=".NpuManagerTestService"
+            android:enabled="true"
+            android:exported="true">
+        </service>
+    </application>
+
+    <uses-feature android:name="android.hardware.npu" android:required="true"/>
+    <uses-permission android:name="android.permission.ACCESS_NPU_MODEL_MANAGER_API" />
+</manifest>

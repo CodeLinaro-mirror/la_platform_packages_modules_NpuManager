@@ -32,7 +32,7 @@ java_library {
         "android.hardware.npu",
     ],
     srcs: [":service-npumanager-sources"],
-    sdk_version: "system_server_current",
+    sdk_version: "core_platform",
     min_sdk_version: "36",
     platform_apis: false,
     defaults: [
@@ -44,11 +44,13 @@ java_library {
         "framework-npumanager.stubs",
         "framework-npumanager.stubs.system",
         "framework-npumanager.impl",
+        "services.core",
+        "framework",
+        "android_system_stubs_current",
     ],
     static_libs: [
         "npumanager_flags_lib",
         "android.hardware.npu-V1-java",
-
     ],
     installable: true,
     errorprone: {

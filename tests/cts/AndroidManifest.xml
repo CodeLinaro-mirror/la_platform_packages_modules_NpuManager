@@ -17,7 +17,7 @@
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.android.npumanager.cts">
-    <uses-feature android:name="android.hardware.npu" />
+    <uses-feature android:name="android.hardware.npu" android:required="true"/>
     <application android:debuggable="true">
         <uses-library android:name="android.test.runner" />
     </application>
@@ -25,4 +25,8 @@
                      android:targetPackage="com.android.npumanager.cts"
                      android:label="CTS tests of com.android.npumanager">
     </instrumentation>
+    <queries>
+        <package android:name="android.npumanager.testapp.A" />
+        <package android:name="android.npumanager.testapp.B" />
+    </queries>
 </manifest>
