@@ -34,6 +34,7 @@ COMMON_JNI_LIBS = ["libnnapidelegateappjni"]
 java_defaults {
     name: "NnapiDelegateAppDefaults",
     srcs: COMMON_SRCS,
+    libs: ["framework-npumanager.stubs.module_lib"],
     static_libs: COMMON_STATIC_LIBS,
     resource_dirs: COMMON_RESOURCE_DIRS,
     jni_libs: COMMON_JNI_LIBS,
