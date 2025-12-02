@@ -29,6 +29,7 @@ import android.npumanager.NpuManager.NpuModelSize;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.os.Process;
+
 import java.util.Objects;
 
 /**
@@ -69,6 +70,20 @@ public class ModelLoadRequest implements Parcelable {
     @Override
     public int hashCode() {
         return Objects.hash(mId, mSize, mPriority, mUid);
+    }
+
+    @Override
+    public String toString() {
+        return "ModelLoadRequest{"
+                + "mId="
+                + mId
+                + ", mSize="
+                + mSize
+                + ", mPriority="
+                + mPriority
+                + ", mUid="
+                + mUid
+                + '}';
     }
 
     /**

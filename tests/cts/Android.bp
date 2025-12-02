@@ -74,9 +74,14 @@ android_test {
         "flag-junit",
         "compatibility-device-util-axt",
         "npumanager_flags_lib",
+        "npumanager-test-utils",
         "androidx.test.uiautomator_uiautomator",
     ],
     min_sdk_version: "36",
     sdk_version: "test_current",
+    data: [
+        ":CtsNpuManagerTestAppA",
+        ":CtsNpuManagerTestAppB",
+    ],
 
 }
