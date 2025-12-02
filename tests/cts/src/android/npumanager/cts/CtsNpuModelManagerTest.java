@@ -32,8 +32,10 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import android.app.UiAutomation;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.npumanager.ModelLoadRequest;
 import android.npumanager.ModelLoadRequestCallback;
@@ -42,11 +44,15 @@ import android.npumanager.testing.ITestModelLoadRequestCallback;
 import android.npumanager.testing.ITestModelLoadStatusListener;
 import android.npumanager.testing.TestModelLoadRequest;
 import android.npumanager.testing.TestNpuManagerClient;
+import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
+import android.os.SystemClock;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
+import android.util.Log;
 
+import androidx.core.content.ContextCompat;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
@@ -59,6 +65,10 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.testng.Assert;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -70,6 +80,9 @@ public class CtsNpuModelManagerTest {
     private static final String BACKGROUND_PACKAGE_NAME = "android.npumanager.testapp.B";
     private static final String TEST_APP_MAIN_ACTIVITY_NAME =
             "android.npumanager.testapp.MainActivity";
+    private static final String ACTION_APP_RESUMED = "android.npumanager.testapp.APP_RESUMED";
+    private static final String EXTRA_PACKAGE_NAME = "packagename";
+    private static final long APP_START_TIMEOUT_MS = 5000;
 
     UiAutomation mUiAutomation;
     Context mContext;
@@ -330,5 +343,161 @@ public class CtsNpuModelManagerTest {
         } finally {
             mUiAutomation.dropShellPermissionIdentity();
         }
+    }
+
+    @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
+    public void testNpuModelManager_killForegroundApp() throws Exception {
+        try {
+            mUiAutomation.adoptShellPermissionIdentity(
+                    android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API);
+            mContext.getSystemService(NpuManager.class)
+                    .setPolicy(NPU_MODEL_POLICY_TURN_TAKING, null);
+
+            // Launch and load model for app A.
+            waitForAppResume(FOREGROUND_PACKAGE_NAME);
+            CountDownLatch appACanLoadLatch = new CountDownLatch(1);
+            TestModelLoadRequest appARequest = new TestModelLoadRequest(1, 100, 100);
+            ITestModelLoadRequestCallback appACallback =
+                    new ITestModelLoadRequestCallback.Stub() {
+                        public void onCanLoadModel(
+                                TestModelLoadRequest request,
+                                int status,
+                                ITestModelLoadStatusListener listener)
+                                throws RemoteException {
+                            if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                                appACanLoadLatch.countDown();
+                                listener.notifyModelLoaded(request);
+                            }
+                        }
+
+                        public void onRequestUnloadModel(TestModelLoadRequest request) {}
+
+                        public void onModelLoadRequestComplete(
+                                TestModelLoadRequest request, int status) {}
+                    };
+            mForegroundNpuManager.requestLoadModel(appARequest, appACallback);
+            assertTrue(
+                    "App A failed to get canLoadModel callback",
+                    appACanLoadLatch.await(5, TimeUnit.SECONDS));
+
+            // Launch background app.
+            waitForAppResume(BACKGROUND_PACKAGE_NAME);
+
+            // Kill foreground app.
+            killApp(FOREGROUND_PACKAGE_NAME);
+            assertTrue(
+                    "App A process still running after force-stop",
+                    waitForAppDeath(FOREGROUND_PACKAGE_NAME, 5000));
+            Log.i(TAG, "App A killed.");
+
+            // Load model on App B
+            CountDownLatch appBCanLoadLatch = new CountDownLatch(1);
+            TestModelLoadRequest appBRequest = new TestModelLoadRequest(2, 100, 100);
+            ITestModelLoadRequestCallback appBCallback =
+                    new ITestModelLoadRequestCallback.Stub() {
+                        public void onCanLoadModel(
+                                TestModelLoadRequest request,
+                                int status,
+                                ITestModelLoadStatusListener listener)
+                                throws RemoteException {
+                            if (status == NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD) {
+                            } else if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                                appBCanLoadLatch.countDown();
+                                listener.notifyModelLoaded(request);
+                            }
+                        }
+
+                        public void onRequestUnloadModel(TestModelLoadRequest request) {}
+
+                        public void onModelLoadRequestComplete(
+                                TestModelLoadRequest request, int status) {}
+                    };
+            mBackgroundNpuManager.requestLoadModel(appBRequest, appBCallback);
+            assertTrue(
+                    "App B failed to get canLoadModel callback",
+                    appBCanLoadLatch.await(5, TimeUnit.SECONDS));
+        } finally {
+            mUiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    private void launchApp(String packageName) {
+        Intent intent =
+                new Intent(Intent.ACTION_MAIN)
+                        .setClassName(packageName, TEST_APP_MAIN_ACTIVITY_NAME)
+                        .addFlags(FLAG_ACTIVITY_NEW_TASK);
+        mContext.startActivity(intent);
+    }
+
+    private void waitForAppResume(String packageName) throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(1);
+        BroadcastReceiver receiver =
+                new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        Log.w(TAG, "Received onReceive. Intent action: " + intent.getAction());
+                        if (ACTION_APP_RESUMED.equals(intent.getAction())) {
+                            String pkg = intent.getStringExtra(EXTRA_PACKAGE_NAME);
+                            Log.w(TAG, "ACTION_APP_RESUMED received. Package name: " + pkg);
+                            if (packageName.equals(pkg)) {
+                                Log.i(TAG, "Received resume broadcast from: " + pkg);
+                                latch.countDown();
+                            }
+                        }
+                    }
+                };
+        ContextCompat.registerReceiver(
+                mContext,
+                receiver,
+                new IntentFilter(ACTION_APP_RESUMED),
+                ContextCompat.RECEIVER_EXPORTED);
+        try {
+            launchApp(packageName);
+            assertTrue(
+                    "Timeout waiting for " + packageName + " to resume",
+                    latch.await(APP_START_TIMEOUT_MS, TimeUnit.MILLISECONDS));
+        } finally {
+            mContext.unregisterReceiver(receiver);
+        }
+    }
+
+    // Helper to check if app process is dead by polling
+    private boolean waitForAppDeath(String packageName, long timeoutMs) throws IOException {
+        long startTime = System.currentTimeMillis();
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            if (!isAppRunning(packageName)) {
+                return true;
+            }
+            SystemClock.sleep(100); // Poll interval
+        }
+        return !isAppRunning(packageName);
+    }
+
+    private String getStringFromPfd(ParcelFileDescriptor pfd) throws IOException {
+        InputStream inputStream = new ParcelFileDescriptor.AutoCloseInputStream(pfd);
+
+        InputStreamReader isr = new InputStreamReader(inputStream, "UTF-8");
+        BufferedReader reader = new BufferedReader(isr);
+
+        StringBuilder output = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            output.append(line).append("\n");
+        }
+        if (output.length() > 0 && output.charAt(output.length() - 1) == '\n') {
+            output.setLength(output.length() - 1);
+        }
+        return output.toString();
+    }
+
+    private boolean isAppRunning(String packageName) throws IOException {
+        String cmd = "pidof " + packageName;
+        String result = getStringFromPfd(mUiAutomation.executeShellCommand(cmd));
+        return result != null && !result.trim().isEmpty();
+    }
+
+    private void killApp(String packageName) {
+        mUiAutomation.executeShellCommand("am force-stop " + packageName);
     }
 }
