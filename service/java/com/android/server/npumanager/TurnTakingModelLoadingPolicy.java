@@ -130,6 +130,7 @@ class TurnTakingModelLoadingPolicy extends NpuModelLoadingPolicy {
             mLoadedUid = mRequestsToUids.getOrDefault(request, INVALID_UID);
             mLoadedRequest = request;
             mLoadedCallback = mRequestsToCallbacks.get(request);
+            mWaitingRequests.remove(request);
         }
     }
 
