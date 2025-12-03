@@ -80,7 +80,6 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
                 if (appInfo != null) {
                     mNpuPackages.put(packageInfo.packageName, appInfo.uid);
                 }
-                break;
             }
         }
 
