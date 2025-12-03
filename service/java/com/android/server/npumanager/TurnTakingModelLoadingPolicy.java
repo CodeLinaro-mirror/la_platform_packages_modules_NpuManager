@@ -21,6 +21,8 @@ import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZE
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD;
 
 import android.annotation.Nullable;
+import android.hardware.npu.EndReason;
+import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
 import android.os.Binder;
@@ -193,6 +195,9 @@ class TurnTakingModelLoadingPolicy extends NpuModelLoadingPolicy {
             Log.e(TAG, "Failed to call onRequestUnloadModel", e);
         }
     }
+
+    @Override
+    void handleWorkEnded(WorkInfo workInfo, @EndReason byte reason) {}
 
     @GuardedBy("this")
     private Optional<Integer> getHighestPriorityWaitingUid() {

@@ -23,6 +23,8 @@ import static android.npumanager.NpuManager.NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
 
+import android.hardware.npu.EndReason;
+import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
 import android.os.Binder;
@@ -176,6 +178,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         Log.d(TAG, "handleModelLoadCancelled: request=" + request);
         int callingUid = Binder.getCallingUid();
         synchronized (this) {
+            IModelLoadCallback callback = mRequestsToCallbacks.get(request);
             mRequestsToCallbacks.remove(request);
             Set<ModelLoadRequest> uidRequests =
                     mUidsToRequests.getOrDefault(callingUid, new HashSet<>());
@@ -224,6 +227,9 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             evaluateAndLoadHighestPriorityModels();
         }
     }
+
+    @Override
+    void handleWorkEnded(WorkInfo workInfo, @EndReason byte reason) {}
 
     private synchronized void evaluateAndLoadHighestPriorityModels() {
         Log.d(TAG, "Evaluating highest priority models");
