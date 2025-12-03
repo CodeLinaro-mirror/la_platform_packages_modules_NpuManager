@@ -67,6 +67,10 @@ class TurnTakingModelLoadingPolicy extends NpuModelLoadingPolicy {
     @GuardedBy("this")
     private final Set<ModelLoadRequest> mWaitingRequests = new HashSet<>();
 
+    TurnTakingModelLoadingPolicy(Map<Integer, Integer> initialUidImportances) {
+        super(initialUidImportances);
+    }
+
     @Override
     void canLoadModel(ModelLoadRequest request, IModelLoadCallback callback) {
         Log.d(TAG, "canLoadModel: request=" + request);
