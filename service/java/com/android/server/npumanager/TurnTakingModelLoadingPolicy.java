@@ -16,6 +16,8 @@
 
 package com.android.server.npumanager;
 
+import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED;
+import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD;
@@ -154,9 +156,18 @@ class TurnTakingModelLoadingPolicy extends NpuModelLoadingPolicy {
     void handleModelLoadCancelled(ModelLoadRequest request) {
         Log.d(TAG, "handleModelLoadCancelled: request=" + request);
         synchronized (this) {
-            mWaitingRequests.remove(request);
-            mRequestsToCallbacks.remove(request);
-            mRequestsToUids.remove(request);
+            try {
+                IModelLoadCallback callback = mRequestsToCallbacks.get(request);
+                if (callback != null) {
+                    callback.onModelLoadRequestComplete(
+                            request, NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED);
+                    mRequestsToCallbacks.remove(request);
+                    mWaitingRequests.remove(request);
+                    mRequestsToUids.remove(request);
+                }
+            } catch (RemoteException e) {
+                // ignore
+            }
         }
     }
 
@@ -187,6 +198,18 @@ class TurnTakingModelLoadingPolicy extends NpuModelLoadingPolicy {
             mLoadedUid = INVALID_UID;
             mLoadedRequest = null;
             mLoadedCallback = null;
+            try {
+                IModelLoadCallback callback = mRequestsToCallbacks.get(request);
+                if (callback != null) {
+                    callback.onModelLoadRequestComplete(
+                            request, NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE);
+                }
+                mRequestsToCallbacks.remove(request);
+                mWaitingRequests.remove(request);
+                mRequestsToUids.remove(request);
+            } catch (RemoteException e) {
+                // ignore
+            }
             highestPriorityUid = getHighestPriorityWaitingUid();
         }
 
