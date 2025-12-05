@@ -186,7 +186,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             mUidsToRequests.put(callingUid, uidRequests);
             if (mLoadedRequests.contains(request)) {
                 mLoadedRequests.remove(request);
-                mAvailableBudget -=
+                mAvailableBudget +=
                         mModelSizeWeights.getOrDefault(request.getSize(), Integer.MAX_VALUE);
             }
         }
