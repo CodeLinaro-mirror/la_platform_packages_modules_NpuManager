@@ -25,6 +25,7 @@ import static android.os.Process.SYSTEM_UID;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.PermissionManuallyEnforced;
+import android.annotation.RequiresNoPermission;
 import android.annotation.SystemService;
 import android.app.ActivityManager;
 import android.app.ActivityManager.RunningAppProcessInfo;
@@ -33,8 +34,12 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.FeatureInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.hardware.npu.EndReason;
 import android.hardware.npu.IScheduling;
+import android.hardware.npu.ISchedulingCallback;
 import android.hardware.npu.SchedulingConfig;
+import android.hardware.npu.StartReason;
+import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.INpuManagerService;
 import android.npumanager.ModelLoadRequest;
@@ -65,6 +70,34 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
     private NpuModelLoadingPolicy mNpuModelLoadingPolicy;
     @Nullable private IScheduling mScheduling;
     private final Map<Integer, Integer> mUidImportanceMap = new HashMap<>();
+    private final ISchedulingCallback mSchedulingCallback =
+            new ISchedulingCallback.Stub() {
+                @RequiresNoPermission
+                @Override
+                public void onWorkRequested(WorkInfo info) {}
+
+                @RequiresNoPermission
+                @Override
+                public void onWorkStarted(WorkInfo workInfo, @StartReason byte reason) {}
+
+                @RequiresNoPermission
+                @Override
+                public void onWorkEnded(WorkInfo workInfo, @EndReason byte reason) {
+                    mNpuModelLoadingPolicy.handleWorkEnded(workInfo, reason);
+                }
+
+                @RequiresNoPermission
+                @Override
+                public int getInterfaceVersion() {
+                    return ISchedulingCallback.VERSION;
+                }
+
+                @RequiresNoPermission
+                @Override
+                public String getInterfaceHash() {
+                    return ISchedulingCallback.HASH;
+                }
+            };
 
     public NpuManagerServiceImpl(@NonNull Context context) {
         if (context == null) {
@@ -121,6 +154,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
         ensureHalService();
         try {
             if (mScheduling != null) {
+                mScheduling.setCallback(mSchedulingCallback);
                 mScheduling.setSchedulingConfigs(
                         configs.toArray(new SchedulingConfig[configs.size()]));
             }

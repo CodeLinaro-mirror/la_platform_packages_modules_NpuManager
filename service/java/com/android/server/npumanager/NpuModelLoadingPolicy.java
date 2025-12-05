@@ -18,6 +18,8 @@ package com.android.server.npumanager;
 
 import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_GONE;
 
+import android.hardware.npu.EndReason;
+import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
 
@@ -65,6 +67,14 @@ abstract class NpuModelLoadingPolicy {
      * @param request The request that was passed to {@link canLoadModel}.
      */
     abstract void handleModelUnloaded(ModelLoadRequest request);
+
+    /**
+     * Called when the HAL notifies the service work has completed.
+     *
+     * @param workInfo The work info associated with this work.
+     * @param reason The reason why the work ended.
+     */
+    abstract void handleWorkEnded(WorkInfo workInfo, @EndReason byte reason);
 
     /**
      * Inform the policy of a change in UID importance.
