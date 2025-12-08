@@ -32,6 +32,7 @@ package android.npumanager {
     field public static final int NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW = 0; // 0x0
     field public static final int NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED = 2; // 0x2
     field public static final int NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD = 1; // 0x1
+    field public static final int NPU_MODEL_POLICY_BUDGET = 2; // 0x2
     field public static final int NPU_MODEL_POLICY_STATUS_QUO = 0; // 0x0
     field public static final int NPU_MODEL_POLICY_TURN_TAKING = 1; // 0x1
     field public static final int NPU_MODEL_PRIORITY_BACKGROUND = 1000; // 0x3e8

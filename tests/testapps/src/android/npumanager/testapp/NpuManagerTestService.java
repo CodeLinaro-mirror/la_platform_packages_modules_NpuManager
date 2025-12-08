@@ -53,6 +53,7 @@ public class NpuManagerTestService extends Service {
 
     private static class ModelLoadRequestCallbackWrapper implements ModelLoadRequestCallback {
         private final ITestModelLoadRequestCallback mCallback;
+        private NpuManager.ModelLoadStatusListener mListener;
 
         ModelLoadRequestCallbackWrapper(ITestModelLoadRequestCallback callback) {
             mCallback = callback;
@@ -62,6 +63,8 @@ public class NpuManagerTestService extends Service {
         public void onCanLoadModel(
                 ModelLoadRequest request, int status, NpuManager.ModelLoadStatusListener listener) {
             Log.d(TAG, "onCanLoadModel: request=" + request + ", status=" + status);
+            mListener = listener;
+
             try {
                 TestModelLoadRequest testRequest =
                         new TestModelLoadRequest(
@@ -75,7 +78,7 @@ public class NpuManagerTestService extends Service {
                             public void notifyModelLoaded(TestModelLoadRequest req) {
                                 Log.d(TAG, "notifyModelLoaded: request=" + req);
                                 try {
-                                    listener.notifyModelLoaded(
+                                    mListener.notifyModelLoaded(
                                             new ModelLoadRequest.Builder(req.id)
                                                     .setSize(req.size)
                                                     .setPriority(req.priority)
@@ -90,7 +93,7 @@ public class NpuManagerTestService extends Service {
                             public void notifyModelUnloaded(TestModelLoadRequest req) {
                                 Log.d(TAG, "notifyModelUnloaded: request=" + req);
                                 try {
-                                    listener.notifyModelUnloaded(
+                                    mListener.notifyModelUnloaded(
                                             new ModelLoadRequest.Builder(req.id)
                                                     .setSize(req.size)
                                                     .setPriority(req.priority)

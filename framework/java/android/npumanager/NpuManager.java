@@ -212,6 +212,7 @@ public final class NpuManager {
             value = {
                 NPU_MODEL_POLICY_STATUS_QUO,
                 NPU_MODEL_POLICY_TURN_TAKING,
+                NPU_MODEL_POLICY_BUDGET,
             })
     @Retention(RetentionPolicy.SOURCE)
     @interface NpuModelPolicy {}
@@ -232,6 +233,17 @@ public final class NpuManager {
      * @hide
      */
     @SystemApi public static final int NPU_MODEL_POLICY_TURN_TAKING = 1;
+
+    /**
+     * A model loading policy that allows multiple models to be loaded at a time, up to a certain
+     * budget.
+     *
+     * <p>UIDs with higher {@link ActivityManager} priority will get higher model load priority.
+     * When a model is unloaded, the next highest priority UID will be allowed to load a model.
+     *
+     * @hide
+     */
+    @SystemApi public static final int NPU_MODEL_POLICY_BUDGET = 2;
 
     private final INpuManagerService mNpuManagerService;
 

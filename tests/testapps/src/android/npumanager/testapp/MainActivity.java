@@ -17,11 +17,33 @@
 package android.npumanager.testapp;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 
 public class MainActivity extends Activity {
+
+    private static final String TAG = "TestAppMainActivity";
+    public static final String ACTION_APP_RESUMED = "android.npumanager.testapp.APP_RESUMED";
+    private static final String EXTRA_PACKAGE_NAME = "packagename";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        Log.i(TAG, "onResume for package: " + getPackageName());
+        Intent intent = new Intent(ACTION_APP_RESUMED);
+        intent.putExtra(EXTRA_PACKAGE_NAME, getPackageName());
+        sendBroadcast(intent);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        Log.i(TAG, "onDestroy: " + getPackageName());
     }
 }

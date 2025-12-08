@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="android.npumanager.testapp.B">
-
     <instrumentation android:name="androidx.test.runner.AndroidJUnitRunner"
         android:targetPackage="android.npumanager.testapp.B"
         android:label="Instrumented test app to interact with NPU Manager">

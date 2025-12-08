@@ -21,9 +21,12 @@ import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZE
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD;
 
 import android.annotation.Nullable;
+import android.hardware.npu.EndReason;
+import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
 import android.os.Binder;
+import android.os.IBinder;
 import android.os.RemoteException;
 import android.util.Log;
 
@@ -35,6 +38,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * A model loading policy that allows one UID to have a model loaded at a time. UIDs with higher
@@ -67,6 +71,38 @@ class TurnTakingModelLoadingPolicy extends NpuModelLoadingPolicy {
     @GuardedBy("this")
     private final Set<ModelLoadRequest> mWaitingRequests = new HashSet<>();
 
+    TurnTakingModelLoadingPolicy(Map<Integer, Integer> initialUidImportances) {
+        super(initialUidImportances);
+    }
+
+    class BinderDeathRecipientUid implements IBinder.DeathRecipient {
+        private final int callingUid;
+
+        BinderDeathRecipientUid(int uid) {
+            this.callingUid = uid;
+        }
+
+        @Override
+        public void binderDied() {
+            Log.d(TAG, "Binder died for callingUid: " + callingUid);
+
+            // If the uid's model is currently loaded, unload it.
+            if (mLoadedUid == callingUid && mLoadedRequest != null) {
+                handleModelUnloaded(mLoadedRequest);
+            }
+            Set<ModelLoadRequest> requestsForCallingUid =
+                    mRequestsToUids.entrySet().stream()
+                            .filter((it) -> it.getValue() == callingUid)
+                            .map(Map.Entry::getKey)
+                            .collect(Collectors.toSet());
+
+            for (ModelLoadRequest request : requestsForCallingUid) {
+                mRequestsToUids.remove(request);
+                mRequestsToCallbacks.remove(request);
+            }
+        }
+    }
+
     @Override
     void canLoadModel(ModelLoadRequest request, IModelLoadCallback callback) {
         Log.d(TAG, "canLoadModel: request=" + request);
@@ -84,6 +120,8 @@ class TurnTakingModelLoadingPolicy extends NpuModelLoadingPolicy {
         }
 
         try {
+            callback.asBinder().linkToDeath(new BinderDeathRecipientUid(callingUid), 0);
+
             // Either nothing is loaded, or this UID already loaded a model.
             if (loadedUid == INVALID_UID || loadedUid == callingUid) {
                 Log.d(TAG, "canLoadModel: CAN_LOAD_NOW");
@@ -130,6 +168,7 @@ class TurnTakingModelLoadingPolicy extends NpuModelLoadingPolicy {
             mLoadedUid = mRequestsToUids.getOrDefault(request, INVALID_UID);
             mLoadedRequest = request;
             mLoadedCallback = mRequestsToCallbacks.get(request);
+            mWaitingRequests.remove(request);
         }
     }
 
@@ -188,6 +227,9 @@ class TurnTakingModelLoadingPolicy extends NpuModelLoadingPolicy {
             Log.e(TAG, "Failed to call onRequestUnloadModel", e);
         }
     }
+
+    @Override
+    void handleWorkEnded(WorkInfo workInfo, @EndReason byte reason) {}
 
     @GuardedBy("this")
     private Optional<Integer> getHighestPriorityWaitingUid() {
