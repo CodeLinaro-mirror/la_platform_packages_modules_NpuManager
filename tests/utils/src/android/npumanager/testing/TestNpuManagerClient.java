@@ -50,10 +50,10 @@ public class TestNpuManagerClient {
                 }
             };
 
-    public TestNpuManagerClient(Context context, String packageName) {
+    public TestNpuManagerClient(Context context, String packageName, int bindServiceFlags) {
         mContext = context;
         Intent intent = new Intent().setClassName(packageName, SERVICE_CLASS);
-        mContext.bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
+        mContext.bindService(intent, mConnection, bindServiceFlags);
     }
 
     private void waitForConnection() {

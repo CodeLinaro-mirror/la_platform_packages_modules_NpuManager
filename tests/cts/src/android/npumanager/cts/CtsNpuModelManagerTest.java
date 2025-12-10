@@ -20,6 +20,7 @@ import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREG
 import static android.content.Intent.FLAG_ACTIVITY_NEW_TASK;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW;
+import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_BUDGET;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_STATUS_QUO;
@@ -134,8 +135,14 @@ public class CtsNpuModelManagerTest {
         mBackgroundAppImportanceUpdated = new CountDownLatch(1);
         mForegroundedAppImportanceUpdated = new CountDownLatch(1);
 
-        mForegroundNpuManager = new TestNpuManagerClient(mContext, FOREGROUND_PACKAGE_NAME);
-        mBackgroundNpuManager = new TestNpuManagerClient(mContext, BACKGROUND_PACKAGE_NAME);
+        mForegroundNpuManager =
+                new TestNpuManagerClient(
+                        mContext, FOREGROUND_PACKAGE_NAME, Context.BIND_AUTO_CREATE);
+        mBackgroundNpuManager =
+                new TestNpuManagerClient(
+                        mContext,
+                        BACKGROUND_PACKAGE_NAME,
+                        Context.BIND_AUTO_CREATE | Context.BIND_NOT_FOREGROUND);
 
         try {
             UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wakeUp();
@@ -275,11 +282,8 @@ public class CtsNpuModelManagerTest {
             mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
             assertTrue(backgroundLatch.await(5, TimeUnit.SECONDS));
 
-            // Lowers importance of background app.
-            mBackgroundNpuManager.unbind();
-            assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
-
             waitForAppResume(FOREGROUND_PACKAGE_NAME);
+            assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
             assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
             CountDownLatch waitLatch = new CountDownLatch(1);
             CountDownLatch canLoadLatch = new CountDownLatch(1);
@@ -348,10 +352,11 @@ public class CtsNpuModelManagerTest {
                                 int status,
                                 ITestModelLoadStatusListener listener)
                                 throws RemoteException {
-                            assertEquals(status, NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
-                            mListener = listener;
-                            mListener.notifyModelLoaded(request);
-                            backgroundLatch.countDown();
+                            if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                                mListener = listener;
+                                mListener.notifyModelLoaded(request);
+                                backgroundLatch.countDown();
+                            }
                         }
 
                         public void onRequestUnloadModel(TestModelLoadRequest request) {
@@ -370,7 +375,6 @@ public class CtsNpuModelManagerTest {
             assertTrue(backgroundLatch.await(5, TimeUnit.SECONDS));
 
             // Lower importance of background app by unbinding the service.
-            mBackgroundNpuManager.unbind();
             waitForAppResume(FOREGROUND_PACKAGE_NAME);
 
             assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
@@ -413,6 +417,89 @@ public class CtsNpuModelManagerTest {
 
             mForegroundNpuManager.cancelLoadModel(foregroundRequest);
             assertTrue(cancelLatch.await(5, TimeUnit.SECONDS));
+        } finally {
+            mActivityManager.removeOnUidImportanceListener(fgListener);
+            mActivityManager.removeOnUidImportanceListener(bgListener);
+
+            mUiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    /**
+     * Requests to load model for a foreground apps, but it doesn't actually load the model when it
+     * receives CAN_LOAD_NOW. Tests that the background app does not receive CAN_LOAD_NOW.
+     *
+     * @throws Exception Thrown from setting the policy.
+     */
+    @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
+    public void testNpuModelManager_budgetPolicy_multipleAppsRequesting() throws Exception {
+        try {
+            mUiAutomation.adoptShellPermissionIdentity();
+
+            NpuManager npuManager = mContext.getSystemService(NpuManager.class);
+            assertNotNull(npuManager);
+
+            npuManager.setPolicy(NPU_MODEL_POLICY_BUDGET, null);
+
+            mActivityManager.addOnUidImportanceListener(fgListener, IMPORTANCE_FOREGROUND_SERVICE);
+            mActivityManager.addOnUidImportanceListener(bgListener, IMPORTANCE_FOREGROUND_SERVICE);
+
+            CountDownLatch fgCanLoadLatch = new CountDownLatch(1);
+            TestModelLoadRequest foregroundRequest =
+                    new TestModelLoadRequest(2, NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+            ITestModelLoadRequestCallback foregroundCallback =
+                    new ITestModelLoadRequestCallback.Stub() {
+                        public void onCanLoadModel(
+                                TestModelLoadRequest request,
+                                int status,
+                                ITestModelLoadStatusListener listener) {
+                            if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                                fgCanLoadLatch.countDown();
+                                // Not calling listener.notifyModel so that this budget
+                                // is still considered "requested" and not loaded
+
+                            }
+                        }
+
+                        public void onRequestUnloadModel(TestModelLoadRequest request) {}
+
+                        public void onModelLoadRequestComplete(
+                                TestModelLoadRequest request, int status) {}
+                    };
+
+            CountDownLatch bgNotPrioritizedLatch = new CountDownLatch(1);
+            TestModelLoadRequest backgroundRequest =
+                    new TestModelLoadRequest(1, NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+            ITestModelLoadRequestCallback backgroundCallback =
+                    new ITestModelLoadRequestCallback.Stub() {
+                        public void onCanLoadModel(
+                                TestModelLoadRequest request,
+                                int status,
+                                ITestModelLoadStatusListener listener) {
+                            if (status == NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED) {
+                                bgNotPrioritizedLatch.countDown();
+                            }
+                        }
+
+                        public void onRequestUnloadModel(TestModelLoadRequest request) {}
+
+                        public void onModelLoadRequestComplete(
+                                TestModelLoadRequest request, int status) {}
+                    };
+
+            waitForAppResume(FOREGROUND_PACKAGE_NAME);
+
+            assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+            assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+
+            // Load fg model.
+            mForegroundNpuManager.requestLoadModel(foregroundRequest, foregroundCallback);
+            assertTrue(fgCanLoadLatch.await(5, TimeUnit.SECONDS));
+
+            // Attempt to load bg model. It should return with NOT_PRIORITIZED.
+            mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
+            assertTrue(bgNotPrioritizedLatch.await(5, TimeUnit.SECONDS));
         } finally {
             mActivityManager.removeOnUidImportanceListener(fgListener);
             mActivityManager.removeOnUidImportanceListener(bgListener);
@@ -464,7 +551,6 @@ public class CtsNpuModelManagerTest {
             assertTrue(
                     "App A process still running after force-stop",
                     killApp(FOREGROUND_PACKAGE_NAME, 10000));
-            Log.i(TAG, "App A killed.");
 
             // Load model on App B
             CountDownLatch appBCanLoadLatch = new CountDownLatch(1);
@@ -476,8 +562,7 @@ public class CtsNpuModelManagerTest {
                                 int status,
                                 ITestModelLoadStatusListener listener)
                                 throws RemoteException {
-                            if (status == NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD) {
-                            } else if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
                                 appBCanLoadLatch.countDown();
                                 listener.notifyModelLoaded(request);
                             }

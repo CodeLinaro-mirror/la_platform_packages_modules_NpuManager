@@ -41,7 +41,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * A model loading policy that allows multiple models to be loaded at a time as long as they all fit
@@ -67,16 +66,10 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             mModelSizeWeights.getOrDefault(NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
 
     @GuardedBy("this")
-    private int mAvailableBudget = MAX_BUDGET;
-
-    @GuardedBy("this")
-    private final Set<ModelLoadRequest> mLoadedRequests = new HashSet<>();
+    private final Map<ModelLoadRequest, ModelLoadRequestInfo> mRequests = new HashMap<>();
 
     @GuardedBy("this")
     Map<Integer, Set<ModelLoadRequest>> mUidsToRequests = new HashMap<>();
-
-    @GuardedBy("this")
-    private final Map<ModelLoadRequest, IModelLoadCallback> mRequestsToCallbacks = new HashMap<>();
 
     BudgetModelLoadingPolicy(Map<Integer, Integer> initialUidImportances) {
         super(initialUidImportances);
@@ -86,65 +79,53 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     void canLoadModel(ModelLoadRequest request, IModelLoadCallback callback) {
         int callingUid = Binder.getCallingUid();
         Log.d(TAG, "canLoadModel: request=" + request + ", callingUid=" + callingUid);
-        Set<ModelLoadRequest> loadedRequests;
         Map<Integer, Set<ModelLoadRequest>> uidsToRequests;
-        Map<ModelLoadRequest, IModelLoadCallback> requestsToCallbacks;
-
-        int availableBudget;
+        Map<ModelLoadRequest, ModelLoadRequestInfo> requests;
 
         synchronized (this) {
-            mRequestsToCallbacks.put(request, callback);
-            Set<ModelLoadRequest> uidRequests =
-                    mUidsToRequests.getOrDefault(callingUid, new HashSet<>());
-            uidRequests.add(request);
-            mUidsToRequests.put(callingUid, uidRequests);
+            mRequests.put(
+                    request,
+                    new ModelLoadRequestInfo(
+                            request,
+                            callingUid,
+                            callback,
+                            ModelLoadRequestInfo.RequestState.PENDING));
+            requests = mRequests;
+            mUidsToRequests.computeIfAbsent(callingUid, k -> new HashSet<>()).add(request);
             uidsToRequests = mUidsToRequests;
-            requestsToCallbacks = mRequestsToCallbacks;
-            loadedRequests = new HashSet<>(mLoadedRequests);
-            availableBudget = mAvailableBudget;
         }
+        // Budget that has been requested or loaded, excluding the model request we're currently
+        // processing.
+        int requestedAndLoadedBudget =
+                requests.keySet().stream()
+                        .filter(x -> request.getId() != x.getId())
+                        .mapToInt(
+                                modelLoadRequest ->
+                                        getModelWeightFromSizeOrThrow(modelLoadRequest.getSize()))
+                        .sum();
+        int availableBudget = MAX_BUDGET - requestedAndLoadedBudget;
 
         try {
-            // If there is budget, we can load now
-            // TODO(b/465268119) Since available budget doesn't get decreased until the model loads,
-            // it's possible to exceed the budget if multiple models ask to load quickly. Consider
-            // tracking the available budget we've told CAN_LOAD_NOW as well as the actual loaded
-            // budget.
-            if (availableBudget
-                    >= mModelSizeWeights.getOrDefault(request.getSize(), Integer.MAX_VALUE)) {
+            if (availableBudget >= getModelWeightFromSizeOrThrow(request.getSize())) {
                 Log.d(TAG, "canLoadModel: CAN_LOAD_NOW");
                 callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
                 return;
             }
 
-            // Get a map of UIDs to only their loaded requests.
-            Map<Integer, Set<ModelLoadRequest>> uidsToLoadedRequests = new HashMap<>();
-            uidsToRequests
-                    .entrySet()
-                    .forEach(
-                            e -> {
-                                int uid = e.getKey();
-                                Set<ModelLoadRequest> loaded =
-                                        e.getValue().stream()
-                                                .filter(loadedRequests::contains)
-                                                .collect(Collectors.toSet());
-                                uidsToLoadedRequests.put(uid, loaded);
-                            });
-
             // Go through all loaded requests in order of least important UIDs, and start unloading
-            // models until we have the necessary budget.
-            int neededBudget =
-                    mModelSizeWeights.getOrDefault(request.getSize(), Integer.MAX_VALUE)
-                            - availableBudget;
-            Set<ModelLoadRequest> modelsToUnload = new HashSet<>();
+            // models or cancelling requests until we have the necessary budget.
+            int neededBudget = getModelWeightFromSizeOrThrow(request.getSize()) - availableBudget;
+            Set<ModelLoadRequest> requestsToCancelOrUnload = new HashSet<>();
             for (int uid : getLeastImportantUids()) {
                 // Don't attempt to unload models more important than the caller.
                 if (getUidImportance(uid) <= getUidImportance(callingUid)) {
                     break;
                 }
-                for (ModelLoadRequest r : uidsToLoadedRequests.getOrDefault(uid, new HashSet<>())) {
-                    modelsToUnload.add(r);
-                    neededBudget -= mModelSizeWeights.getOrDefault(r.getSize(), Integer.MAX_VALUE);
+                for (ModelLoadRequest r : uidsToRequests.getOrDefault(uid, new HashSet<>())) {
+                    // If model is already loaded, unload it. Otherwise, cancel the request.
+                    requestsToCancelOrUnload.add(r);
+
+                    neededBudget -= getModelWeightFromSizeOrThrow(r.getSize());
                     if (neededBudget <= 0) {
                         break;
                     }
@@ -154,17 +135,27 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                 }
             }
 
-            // If we found the budget, ask the models to unload, otherwise the new request is
-            // not prioritized.
+            // If we found the budget, ask the models to unload or cancel the requests, otherwise
+            // the new request is not prioritized.
             if (neededBudget <= 0) {
-                for (ModelLoadRequest r : modelsToUnload) {
-                    IModelLoadCallback cb = requestsToCallbacks.get(r);
-                    if (cb != null) {
-                        cb.onRequestUnloadModel(r);
-                    } else {
+                for (ModelLoadRequest r : requestsToCancelOrUnload) {
+                    ModelLoadRequestInfo modelRequestInfo = mRequests.get(r);
+                    if (modelRequestInfo == null || modelRequestInfo.getCallback() == null) {
                         Log.w(TAG, "No callback for request " + r);
+                        continue;
+                    }
+                    IModelLoadCallback cb = modelRequestInfo.getCallback();
+                    synchronized (this) {
+                        if (modelRequestInfo.getState()
+                                == ModelLoadRequestInfo.RequestState.LOADED) {
+                            cb.onRequestUnloadModel(r);
+                        } else {
+                            Log.w(TAG, "Cancelling pending model r: " + r);
+                            handleModelLoadCancelled(r);
+                        }
                     }
                 }
+
                 Log.d(TAG, "canLoadModel: WAIT_FOR_UNLOAD");
                 callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD);
             } else {
@@ -179,28 +170,18 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     @Override
     void handleModelLoadCancelled(ModelLoadRequest request) {
         Log.d(TAG, "handleModelLoadCancelled: request=" + request);
-        int callingUid = Binder.getCallingUid();
-        synchronized (this) {
-            try {
-                IModelLoadCallback callback = mRequestsToCallbacks.get(request);
-                if (callback != null) {
-                    callback.onModelLoadRequestComplete(
-                            request, NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED);
-                }
-            } catch (RemoteException e) {
-                // Ignore
+        try {
+            IModelLoadCallback callback =
+                    mRequests.get(request) != null ? mRequests.get(request).getCallback() : null;
+            if (callback != null) {
+                callback.onModelLoadRequestComplete(
+                        request, NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED);
             }
-            mRequestsToCallbacks.remove(request);
-            Set<ModelLoadRequest> uidRequests =
-                    mUidsToRequests.getOrDefault(callingUid, new HashSet<>());
-            uidRequests.remove(request);
-            mUidsToRequests.put(callingUid, uidRequests);
-            if (mLoadedRequests.contains(request)) {
-                mLoadedRequests.remove(request);
-                mAvailableBudget +=
-                        mModelSizeWeights.getOrDefault(request.getSize(), Integer.MAX_VALUE);
-            }
+        } catch (RemoteException e) {
+            // Ignore
         }
+
+        removeRequest(request);
     }
 
     @Override
@@ -208,9 +189,11 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         Log.d(TAG, "handleModelLoaded: request=" + request);
         // TODO consider throwing an error if this model should not load.
         synchronized (this) {
-            mLoadedRequests.add(request);
-            mAvailableBudget -=
-                    mModelSizeWeights.getOrDefault(request.getSize(), Integer.MAX_VALUE);
+            ModelLoadRequestInfo modelLoadRequestInfo = mRequests.get(request);
+            if (modelLoadRequestInfo == null) {
+                return;
+            }
+            modelLoadRequestInfo.setState(ModelLoadRequestInfo.RequestState.LOADED);
         }
     }
 
@@ -224,24 +207,24 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     void handleModelUnloaded(ModelLoadRequest request) {
         // TODO consider what to do if this model wasn't loaded.
         Log.d(TAG, "handleModelUnloaded: request=" + request);
-        synchronized (this) {
-            boolean wasLoaded = mLoadedRequests.remove(request);
-            if (wasLoaded) {
-                mAvailableBudget +=
-                        mModelSizeWeights.getOrDefault(request.getSize(), Integer.MAX_VALUE);
-                Log.d(TAG, "Reclaimed budget, new available: " + mAvailableBudget);
+        try {
+            IModelLoadCallback callback =
+                    mRequests.get(request) != null ? mRequests.get(request).getCallback() : null;
+            if (callback != null) {
+                callback.onModelLoadRequestComplete(
+                        request, NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE);
             }
+        } catch (RemoteException e) {
+            // ignore
+        }
 
-            try {
-                IModelLoadCallback callback = mRequestsToCallbacks.get(request);
-                if (callback != null) {
-                    callback.onModelLoadRequestComplete(
-                            request, NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE);
-                    mRequestsToCallbacks.remove(request);
-                }
-            } catch (RemoteException e) {
-                // ignore
-            }
+        removeRequest(request);
+        evaluateAndLoadHighestPriorityModels();
+    }
+
+    private void removeRequest(ModelLoadRequest request) {
+        synchronized (this) {
+            mRequests.remove(request);
 
             Iterator<Map.Entry<Integer, Set<ModelLoadRequest>>> iterator =
                     mUidsToRequests.entrySet().iterator();
@@ -259,7 +242,6 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     break;
                 }
             }
-            evaluateAndLoadHighestPriorityModels();
         }
     }
 
@@ -283,7 +265,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                 new HashSet<>(); // The models that should ideally be loaded;
         for (int uid : sortedUids) {
             for (ModelLoadRequest request : mUidsToRequests.getOrDefault(uid, new HashSet<>())) {
-                int weight = mModelSizeWeights.getOrDefault(request.getSize(), Integer.MAX_VALUE);
+                int weight = getModelWeightFromSizeOrThrow(request.getSize());
                 if (weight <= budget) {
                     idealRequests.add(request);
                     budget -= weight;
@@ -297,23 +279,67 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             }
         }
 
-        // Determine which requests need to be unloaded.
+        // Determine which requests need to be unloaded or cancelled.
         Set<ModelLoadRequest> requestsToUnload = new HashSet<>();
-        try {
-            for (ModelLoadRequest request : mLoadedRequests) {
-                if (!idealRequests.contains(request)) {
-                    Log.d(TAG, "Requesting unload for request=" + request);
-                    IModelLoadCallback cb = mRequestsToCallbacks.get(request);
-                    if (cb != null) {
-                        cb.onRequestUnloadModel(request);
+        Set<ModelLoadRequest> requestsToCancel = new HashSet<>();
+
+        for (ModelLoadRequest request : mRequests.keySet()) {
+            ModelLoadRequestInfo modelLoadRequestInfo = mRequests.get(request);
+            if (!idealRequests.contains(request)) {
+                IModelLoadCallback cb = modelLoadRequestInfo.getCallback();
+                if (cb != null) {
+                    if (modelLoadRequestInfo.getState()
+                            == ModelLoadRequestInfo.RequestState.LOADED) {
+                        Log.d(
+                                TAG,
+                                "Requesting unload request="
+                                        + request
+                                        + ", ModelRequestInfo="
+                                        + modelLoadRequestInfo);
+                        requestsToUnload.add(request);
                     } else {
-                        Log.w(TAG, "No callback for request " + request);
+                        Log.w(
+                                TAG,
+                                "Cancelling request="
+                                        + request
+                                        + ", ModelRequestInfo="
+                                        + modelLoadRequestInfo);
+                        requestsToCancel.add(request);
                     }
-                    requestsToUnload.add(request);
+                } else {
+                    Log.w(TAG, "No callback for request " + request);
+                }
+            }
+        }
+
+        // Call unload
+        try {
+            for (ModelLoadRequest request : requestsToUnload) {
+                ModelLoadRequestInfo modelLoadRequestInfo = mRequests.get(request);
+                if (modelLoadRequestInfo != null) {
+                    IModelLoadCallback cb = modelLoadRequestInfo.getCallback();
+                    if (cb != null) {
+                        Log.d(
+                                TAG,
+                                "Requesting unload request="
+                                        + request
+                                        + ", ModelRequestInfo="
+                                        + modelLoadRequestInfo);
+                        cb.onRequestUnloadModel(request);
+                    }
                 }
             }
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to call onRequestUnloadModel", e);
+        }
+
+        // Call cancel
+        for (ModelLoadRequest request : requestsToCancel) {
+            ModelLoadRequestInfo modelLoadRequestInfo = mRequests.get(request);
+            Log.w(
+                    TAG,
+                    "Cancelling request=" + request + ", ModelRequestInfo=" + modelLoadRequestInfo);
+            handleModelLoadCancelled(request);
         }
 
         // Tell models that should be loaded, they can load. If there are models being unloaded,
@@ -324,14 +350,19 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                         : NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD;
         try {
             for (ModelLoadRequest request : idealRequests) {
-                if (!mLoadedRequests.contains(request)) {
+                ModelLoadRequestInfo modelLoadRequestInfo = mRequests.get(request);
+                if (modelLoadRequestInfo == null) {
+                    Log.w(TAG, "No model info for request=" + request);
+                    continue;
+                }
+                if (modelLoadRequestInfo.getState() != ModelLoadRequestInfo.RequestState.LOADED) {
                     Log.d(
                             TAG,
                             String.format(
                                     "%s for request=%s",
                                     requestsToUnload.isEmpty() ? "CAN_LOAD_NOW" : "WAIT_FOR_UNLOAD",
                                     request.toString()));
-                    IModelLoadCallback cb = mRequestsToCallbacks.get(request);
+                    IModelLoadCallback cb = modelLoadRequestInfo.getCallback();
                     if (cb != null) {
                         cb.onCanLoadModel(request, statusForIdealModels);
                     } else {
@@ -342,5 +373,12 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to call onCanLoadModel", e);
         }
+    }
+
+    private Integer getModelWeightFromSizeOrThrow(Integer size) throws IllegalArgumentException {
+        if (!mModelSizeWeights.containsKey(size)) {
+            throw new IllegalArgumentException("Invalid model size: " + size);
+        }
+        return mModelSizeWeights.get(size);
     }
 }
