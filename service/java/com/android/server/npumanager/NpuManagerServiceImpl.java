@@ -72,18 +72,25 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
     private final Map<Integer, Integer> mUidImportanceMap = new HashMap<>();
     private final ISchedulingCallback mSchedulingCallback =
             new ISchedulingCallback.Stub() {
-                @RequiresNoPermission
-                @Override
-                public void onWorkRequested(WorkInfo info) {}
+                private final MetricsLogger mMetricsLogger = new MetricsLogger();
 
                 @RequiresNoPermission
                 @Override
-                public void onWorkStarted(WorkInfo workInfo, @StartReason byte reason) {}
+                public void onWorkRequested(WorkInfo workInfo) {
+                    mMetricsLogger.logWorkRequested(workInfo);
+                }
+
+                @RequiresNoPermission
+                @Override
+                public void onWorkStarted(WorkInfo workInfo, @StartReason byte reason) {
+                    mMetricsLogger.logWorkStarted(workInfo, reason);
+                }
 
                 @RequiresNoPermission
                 @Override
                 public void onWorkEnded(WorkInfo workInfo, @EndReason byte reason) {
                     mNpuModelLoadingPolicy.handleWorkEnded(workInfo, reason);
+                    mMetricsLogger.logWorkEnded(workInfo, reason);
                 }
 
                 @RequiresNoPermission

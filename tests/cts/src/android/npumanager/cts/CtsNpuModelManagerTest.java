@@ -16,6 +16,7 @@
 
 package android.npumanager.cts;
 
+import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE;
 import static android.content.Intent.FLAG_ACTIVITY_NEW_TASK;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW;
@@ -31,6 +32,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import android.app.ActivityManager;
 import android.app.UiAutomation;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -55,6 +57,7 @@ import android.util.Log;
 import androidx.core.content.ContextCompat;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
+import androidx.test.uiautomator.UiDevice;
 
 import com.android.compatibility.common.util.RequiredFeatureRule;
 
@@ -86,22 +89,68 @@ public class CtsNpuModelManagerTest {
 
     UiAutomation mUiAutomation;
     Context mContext;
+    ActivityManager mActivityManager;
     TestNpuManagerClient mForegroundNpuManager;
     TestNpuManagerClient mBackgroundNpuManager;
+    CountDownLatch mBackgroundAppImportanceUpdated;
+    CountDownLatch mForegroundedAppImportanceUpdated;
+    final ActivityManager.OnUidImportanceListener bgListener =
+            (uid, importance) -> {
+                try {
+                    int bkgUid = getUid(BACKGROUND_PACKAGE_NAME);
+
+                    if (bkgUid == uid) {
+                        Log.d(TAG, "Importance for bg uid is: " + importance);
+                        if (importance > IMPORTANCE_FOREGROUND_SERVICE) {
+                            mBackgroundAppImportanceUpdated.countDown();
+                        }
+                    }
+                } catch (Exception e) {
+                    // Ignore
+                }
+            };
+
+    final ActivityManager.OnUidImportanceListener fgListener =
+            (uid, importance) -> {
+                try {
+                    int fgUid = getUid(FOREGROUND_PACKAGE_NAME);
+
+                    if (fgUid == uid) {
+                        Log.d(TAG, "Importance for fg uid is: " + importance);
+                        if (importance <= IMPORTANCE_FOREGROUND_SERVICE) {
+                            mForegroundedAppImportanceUpdated.countDown();
+                        }
+                    }
+                } catch (Exception e) {
+                    // Ignore
+                }
+            };
 
     @Before
     public void setUp() {
         mUiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         mContext = InstrumentationRegistry.getInstrumentation().getContext();
+        mActivityManager = mContext.getSystemService(ActivityManager.class);
+        mBackgroundAppImportanceUpdated = new CountDownLatch(1);
+        mForegroundedAppImportanceUpdated = new CountDownLatch(1);
 
         mForegroundNpuManager = new TestNpuManagerClient(mContext, FOREGROUND_PACKAGE_NAME);
         mBackgroundNpuManager = new TestNpuManagerClient(mContext, BACKGROUND_PACKAGE_NAME);
+
+        try {
+            UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wakeUp();
+        } catch (RemoteException e) {
+            Log.e(TAG, "RemoteException", e);
+        }
     }
 
     @After
-    public void tearDown() throws RemoteException {
+    public void tearDown() throws RemoteException, IOException {
         mForegroundNpuManager.reset();
         mBackgroundNpuManager.reset();
+
+        killApp(BACKGROUND_PACKAGE_NAME, 5000);
+        killApp(FOREGROUND_PACKAGE_NAME, 5000);
     }
 
     @Rule(order = 1)
@@ -128,8 +177,7 @@ public class CtsNpuModelManagerTest {
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testNpuModelManager_statusQuoPolicy() throws RemoteException, InterruptedException {
         try {
-            mUiAutomation.adoptShellPermissionIdentity(
-                    android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API);
+            mUiAutomation.adoptShellPermissionIdentity();
 
             Context context = InstrumentationRegistry.getInstrumentation().getContext();
             assertEquals(
@@ -184,20 +232,17 @@ public class CtsNpuModelManagerTest {
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testNpuModelManager_turnTakingPolicy() throws Exception {
         try {
-            mUiAutomation.adoptShellPermissionIdentity(
-                    android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API);
+            mUiAutomation.adoptShellPermissionIdentity();
             mContext.getSystemService(NpuManager.class)
                     .setPolicy(NPU_MODEL_POLICY_TURN_TAKING, null);
 
-            // Start foreground activity
-            mContext.startActivity(
-                    new Intent(Intent.ACTION_MAIN)
-                            .setClassName(FOREGROUND_PACKAGE_NAME, TEST_APP_MAIN_ACTIVITY_NAME)
-                            .addFlags(FLAG_ACTIVITY_NEW_TASK));
+            mActivityManager.addOnUidImportanceListener(fgListener, IMPORTANCE_FOREGROUND_SERVICE);
+            mActivityManager.addOnUidImportanceListener(bgListener, IMPORTANCE_FOREGROUND_SERVICE);
 
             // First load background model
             CountDownLatch backgroundLatch = new CountDownLatch(1);
             CountDownLatch unloadLatch = new CountDownLatch(1);
+            CountDownLatch cancelLatch = new CountDownLatch(1);
             TestModelLoadRequest backgroundRequest = new TestModelLoadRequest(1, 100, 100);
             ITestModelLoadRequestCallback backgroundCallback =
                     new ITestModelLoadRequestCallback.Stub() {
@@ -208,10 +253,11 @@ public class CtsNpuModelManagerTest {
                                 int status,
                                 ITestModelLoadStatusListener listener)
                                 throws RemoteException {
-                            assertEquals(status, NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
-                            mListener = listener;
-                            mListener.notifyModelLoaded(request);
-                            backgroundLatch.countDown();
+                            if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                                mListener = listener;
+                                mListener.notifyModelLoaded(request);
+                                backgroundLatch.countDown();
+                            }
                         }
 
                         public void onRequestUnloadModel(TestModelLoadRequest request) {
@@ -229,7 +275,12 @@ public class CtsNpuModelManagerTest {
             mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
             assertTrue(backgroundLatch.await(5, TimeUnit.SECONDS));
 
-            // Then, load foreground model. It should preempt the background one
+            // Lowers importance of background app.
+            mBackgroundNpuManager.unbind();
+            assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+
+            waitForAppResume(FOREGROUND_PACKAGE_NAME);
+            assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
             CountDownLatch waitLatch = new CountDownLatch(1);
             CountDownLatch canLoadLatch = new CountDownLatch(1);
             TestModelLoadRequest foregroundRequest = new TestModelLoadRequest(2, 100, 100);
@@ -251,13 +302,24 @@ public class CtsNpuModelManagerTest {
                         public void onRequestUnloadModel(TestModelLoadRequest request) {}
 
                         public void onModelLoadRequestComplete(
-                                TestModelLoadRequest request, int status) {}
+                                TestModelLoadRequest request, int status) {
+                            if (status == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
+                                assertEquals(foregroundRequest.id, request.id);
+                                cancelLatch.countDown();
+                            }
+                        }
                     };
             mForegroundNpuManager.requestLoadModel(foregroundRequest, foregroundCallback);
             assertTrue(waitLatch.await(5, TimeUnit.SECONDS));
             assertTrue(unloadLatch.await(5, TimeUnit.SECONDS));
             assertTrue(canLoadLatch.await(5, TimeUnit.SECONDS));
+
+            mForegroundNpuManager.cancelLoadModel(foregroundRequest);
+            assertTrue(cancelLatch.await(5, TimeUnit.SECONDS));
         } finally {
+            mActivityManager.removeOnUidImportanceListener(fgListener);
+            mActivityManager.removeOnUidImportanceListener(bgListener);
+
             mUiAutomation.dropShellPermissionIdentity();
         }
     }
@@ -266,15 +328,11 @@ public class CtsNpuModelManagerTest {
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testNpuModelManager_budgetPolicy() throws Exception {
         try {
-            mUiAutomation.adoptShellPermissionIdentity(
-                    android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API);
+            mUiAutomation.adoptShellPermissionIdentity();
             mContext.getSystemService(NpuManager.class).setPolicy(NPU_MODEL_POLICY_BUDGET, null);
 
-            // Start foreground activity
-            mContext.startActivity(
-                    new Intent(Intent.ACTION_MAIN)
-                            .setClassName(FOREGROUND_PACKAGE_NAME, TEST_APP_MAIN_ACTIVITY_NAME)
-                            .addFlags(FLAG_ACTIVITY_NEW_TASK));
+            mActivityManager.addOnUidImportanceListener(fgListener, IMPORTANCE_FOREGROUND_SERVICE);
+            mActivityManager.addOnUidImportanceListener(bgListener, IMPORTANCE_FOREGROUND_SERVICE);
 
             // First load background model
             CountDownLatch backgroundLatch = new CountDownLatch(1);
@@ -311,9 +369,17 @@ public class CtsNpuModelManagerTest {
             mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
             assertTrue(backgroundLatch.await(5, TimeUnit.SECONDS));
 
-            // Then, load foreground model. It should preempt the background one
+            // Lower importance of background app by unbinding the service.
+            mBackgroundNpuManager.unbind();
+            waitForAppResume(FOREGROUND_PACKAGE_NAME);
+
+            assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+            assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+
             CountDownLatch waitLatch = new CountDownLatch(1);
             CountDownLatch canLoadLatch = new CountDownLatch(1);
+
+            CountDownLatch cancelLatch = new CountDownLatch(1);
             TestModelLoadRequest foregroundRequest =
                     new TestModelLoadRequest(2, NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
             ITestModelLoadRequestCallback foregroundCallback =
@@ -334,13 +400,23 @@ public class CtsNpuModelManagerTest {
                         public void onRequestUnloadModel(TestModelLoadRequest request) {}
 
                         public void onModelLoadRequestComplete(
-                                TestModelLoadRequest request, int status) {}
+                                TestModelLoadRequest request, int status) {
+                            if (status == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
+                                cancelLatch.countDown();
+                            }
+                        }
                     };
             mForegroundNpuManager.requestLoadModel(foregroundRequest, foregroundCallback);
             assertTrue(waitLatch.await(5, TimeUnit.SECONDS));
             assertTrue(unloadLatch.await(5, TimeUnit.SECONDS));
             assertTrue(canLoadLatch.await(5, TimeUnit.SECONDS));
+
+            mForegroundNpuManager.cancelLoadModel(foregroundRequest);
+            assertTrue(cancelLatch.await(5, TimeUnit.SECONDS));
         } finally {
+            mActivityManager.removeOnUidImportanceListener(fgListener);
+            mActivityManager.removeOnUidImportanceListener(bgListener);
+
             mUiAutomation.dropShellPermissionIdentity();
         }
     }
@@ -385,10 +461,9 @@ public class CtsNpuModelManagerTest {
             waitForAppResume(BACKGROUND_PACKAGE_NAME);
 
             // Kill foreground app.
-            killApp(FOREGROUND_PACKAGE_NAME);
             assertTrue(
                     "App A process still running after force-stop",
-                    waitForAppDeath(FOREGROUND_PACKAGE_NAME, 5000));
+                    killApp(FOREGROUND_PACKAGE_NAME, 10000));
             Log.i(TAG, "App A killed.");
 
             // Load model on App B
@@ -430,16 +505,18 @@ public class CtsNpuModelManagerTest {
         mContext.startActivity(intent);
     }
 
+    // Launches the test app with the given package name and blocks until the ACTION_APP_RESUME
+    // broadcast is received from the app.
     private void waitForAppResume(String packageName) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         BroadcastReceiver receiver =
                 new BroadcastReceiver() {
                     @Override
                     public void onReceive(Context context, Intent intent) {
-                        Log.w(TAG, "Received onReceive. Intent action: " + intent.getAction());
+                        Log.d(TAG, "Received onReceive. Intent action: " + intent.getAction());
                         if (ACTION_APP_RESUMED.equals(intent.getAction())) {
                             String pkg = intent.getStringExtra(EXTRA_PACKAGE_NAME);
-                            Log.w(TAG, "ACTION_APP_RESUMED received. Package name: " + pkg);
+                            Log.d(TAG, "ACTION_APP_RESUMED received. Package name: " + pkg);
                             if (packageName.equals(pkg)) {
                                 Log.i(TAG, "Received resume broadcast from: " + pkg);
                                 latch.countDown();
@@ -462,16 +539,16 @@ public class CtsNpuModelManagerTest {
         }
     }
 
-    // Helper to check if app process is dead by polling
+    // Blocks until app is killed.
     private boolean waitForAppDeath(String packageName, long timeoutMs) throws IOException {
         long startTime = System.currentTimeMillis();
         while (System.currentTimeMillis() - startTime < timeoutMs) {
-            if (!isAppRunning(packageName)) {
+            if (isAppKilled(packageName)) {
                 return true;
             }
-            SystemClock.sleep(100); // Poll interval
+            SystemClock.sleep(100);
         }
-        return !isAppRunning(packageName);
+        return isAppKilled(packageName);
     }
 
     private String getStringFromPfd(ParcelFileDescriptor pfd) throws IOException {
@@ -485,19 +562,24 @@ public class CtsNpuModelManagerTest {
         while ((line = reader.readLine()) != null) {
             output.append(line).append("\n");
         }
-        if (output.length() > 0 && output.charAt(output.length() - 1) == '\n') {
+        if (!output.isEmpty() && output.charAt(output.length() - 1) == '\n') {
             output.setLength(output.length() - 1);
         }
         return output.toString();
     }
 
-    private boolean isAppRunning(String packageName) throws IOException {
+    private boolean isAppKilled(String packageName) throws IOException {
         String cmd = "pidof " + packageName;
         String result = getStringFromPfd(mUiAutomation.executeShellCommand(cmd));
-        return result != null && !result.trim().isEmpty();
+        return result == null || result.trim().isEmpty();
     }
 
-    private void killApp(String packageName) {
+    private boolean killApp(String packageName, long timeoutMs) throws IOException {
         mUiAutomation.executeShellCommand("am force-stop " + packageName);
+        return waitForAppDeath(packageName, timeoutMs);
+    }
+
+    private int getUid(String packageName) throws PackageManager.NameNotFoundException {
+        return mContext.getPackageManager().getPackageUid(packageName, 0);
     }
 }

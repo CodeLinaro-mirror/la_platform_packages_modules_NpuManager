@@ -45,6 +45,7 @@ public class MainActivity extends Activity {
     private byte[] inputBuffer = null;
     private Button loadModelButton;
     private Button unloadModelButton;
+    private Button cancelModelLoadButton;
     private TextView textView;
 
     public ModelLoadRequestCallback callback =
@@ -96,7 +97,11 @@ public class MainActivity extends Activity {
 
                 @Override
                 public void onModelLoadRequestComplete(ModelLoadRequest request, int status) {
-                    Log.w(TAG, "Model load request complete");
+                    if (status == NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
+                        Log.w(TAG, "Model load request cancelled");
+                    } else if (status == NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE) {
+                        Log.w(TAG, "Model load request complete");
+                    }
                 }
             };
 
@@ -123,6 +128,7 @@ public class MainActivity extends Activity {
         loadModelButton = findViewById(R.id.load_model_btn);
         unloadModelButton = findViewById(R.id.unload_model_btn);
         textView = findViewById(R.id.text_view_status);
+        cancelModelLoadButton = findViewById(R.id.cancel_model_load_btn);
 
         if (npuManager != null) {
             Log.w(TAG, "NpuManager not null.");
@@ -139,7 +145,6 @@ public class MainActivity extends Activity {
                         .setSize(NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB)
                         .setPriority(NpuManager.NPU_MODEL_PRIORITY_NORMAL)
                         .build();
-
         loadModelButton.setOnClickListener(
                 v -> {
                     try {
@@ -151,6 +156,19 @@ public class MainActivity extends Activity {
                     } catch (RemoteException e) {
                         Log.w(TAG, "Remote exception: " + e);
                     }
+                });
+
+        cancelModelLoadButton.setOnClickListener(
+                v -> {
+                    try {
+                        if (npuManager != null) {
+                            Log.w(TAG, "Requesting to load the model now");
+                            npuManager.cancelModelLoad(request);
+                        }
+                    } catch (RemoteException e) {
+                        Log.w(TAG, "Remote exception: " + e);
+                    }
+                    ;
                 });
 
         unloadModelButton.setOnClickListener(

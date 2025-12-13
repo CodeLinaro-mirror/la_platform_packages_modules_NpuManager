@@ -40,4 +40,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Unload model"/>
+
+    <Button
+        android:id="@+id/cancel_model_load_btn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Cancel Model Load Request"
+        android:layout_marginBottom="8dp"/>
 </LinearLayout>

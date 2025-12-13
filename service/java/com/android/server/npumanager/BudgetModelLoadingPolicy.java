@@ -16,6 +16,8 @@
 
 package com.android.server.npumanager;
 
+import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED;
+import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD;
@@ -35,6 +37,7 @@ import com.android.internal.annotations.GuardedBy;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -81,8 +84,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
 
     @Override
     void canLoadModel(ModelLoadRequest request, IModelLoadCallback callback) {
-        Log.d(TAG, "canLoadModel: request=" + request);
         int callingUid = Binder.getCallingUid();
+        Log.d(TAG, "canLoadModel: request=" + request + ", callingUid=" + callingUid);
         Set<ModelLoadRequest> loadedRequests;
         Map<Integer, Set<ModelLoadRequest>> uidsToRequests;
         Map<ModelLoadRequest, IModelLoadCallback> requestsToCallbacks;
@@ -178,7 +181,15 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         Log.d(TAG, "handleModelLoadCancelled: request=" + request);
         int callingUid = Binder.getCallingUid();
         synchronized (this) {
-            IModelLoadCallback callback = mRequestsToCallbacks.get(request);
+            try {
+                IModelLoadCallback callback = mRequestsToCallbacks.get(request);
+                if (callback != null) {
+                    callback.onModelLoadRequestComplete(
+                            request, NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED);
+                }
+            } catch (RemoteException e) {
+                // Ignore
+            }
             mRequestsToCallbacks.remove(request);
             Set<ModelLoadRequest> uidRequests =
                     mUidsToRequests.getOrDefault(callingUid, new HashSet<>());
@@ -214,9 +225,40 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         // TODO consider what to do if this model wasn't loaded.
         Log.d(TAG, "handleModelUnloaded: request=" + request);
         synchronized (this) {
-            mLoadedRequests.remove(request);
-            mAvailableBudget +=
-                    mModelSizeWeights.getOrDefault(request.getSize(), Integer.MAX_VALUE);
+            boolean wasLoaded = mLoadedRequests.remove(request);
+            if (wasLoaded) {
+                mAvailableBudget +=
+                        mModelSizeWeights.getOrDefault(request.getSize(), Integer.MAX_VALUE);
+                Log.d(TAG, "Reclaimed budget, new available: " + mAvailableBudget);
+            }
+
+            try {
+                IModelLoadCallback callback = mRequestsToCallbacks.get(request);
+                if (callback != null) {
+                    callback.onModelLoadRequestComplete(
+                            request, NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE);
+                    mRequestsToCallbacks.remove(request);
+                }
+            } catch (RemoteException e) {
+                // ignore
+            }
+
+            Iterator<Map.Entry<Integer, Set<ModelLoadRequest>>> iterator =
+                    mUidsToRequests.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<Integer, Set<ModelLoadRequest>> entry = iterator.next();
+                Set<ModelLoadRequest> uidRequests = entry.getValue();
+                if (uidRequests.remove(request)) {
+                    Log.d(
+                            TAG,
+                            "Removed request " + request.getId() + " from UID " + entry.getKey());
+                    if (uidRequests.isEmpty()) {
+                        iterator.remove();
+                        Log.d(TAG, "Removed empty UID " + entry.getKey() + " from mUidsToRequests");
+                    }
+                    break;
+                }
+            }
             evaluateAndLoadHighestPriorityModels();
         }
     }
