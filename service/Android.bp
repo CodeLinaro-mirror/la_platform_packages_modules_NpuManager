@@ -16,6 +16,22 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
+genrule {
+    name: "statslog-npu-java-gen",
+    tools: ["stats-log-api-gen"],
+    cmd: "$(location stats-log-api-gen) --java $(out) --module npu --javaPackage com.android.server.npumanager --javaClass NpuStatsLog",
+    out: ["java/com/android/server/npumanager/NpuStatsLog.java"],
+}
+
+java_library {
+    name: "statslog-npu",
+    srcs: [
+        ":statslog-npu-java-gen",
+    ],
+    apex_available: ["com.android.npumanager"],
+    min_sdk_version: "36",
+}
+
 filegroup {
     name: "service-npumanager-sources",
     srcs: [
@@ -51,6 +67,7 @@ java_library {
     static_libs: [
         "npumanager_flags_lib",
         "android.hardware.npu-V1-java",
+        "statslog-npu",
     ],
     installable: true,
     errorprone: {
