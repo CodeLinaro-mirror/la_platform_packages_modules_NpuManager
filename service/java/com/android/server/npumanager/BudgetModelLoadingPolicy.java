@@ -30,6 +30,7 @@ import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
 import android.os.Binder;
+import android.os.IBinder;
 import android.os.RemoteException;
 import android.util.Log;
 
@@ -71,6 +72,30 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     @GuardedBy("this")
     Map<Integer, Set<ModelLoadRequest>> mUidsToRequests = new HashMap<>();
 
+    class BinderDeathRecipientUid implements IBinder.DeathRecipient {
+        private final int callingUid;
+
+        BinderDeathRecipientUid(int uid) {
+            this.callingUid = uid;
+        }
+
+        @Override
+        public synchronized void binderDied() {
+            Log.d(TAG, "Binder died for callingUid: " + callingUid);
+
+            Set<ModelLoadRequest> requestsForCallingUid = mUidsToRequests.get(callingUid);
+            if (requestsForCallingUid == null) {
+                return;
+            }
+            for (ModelLoadRequest request : requestsForCallingUid) {
+                mRequests.remove(request);
+            }
+            mUidsToRequests.remove(callingUid);
+
+            evaluateAndLoadHighestPriorityModels();
+        }
+    }
+
     BudgetModelLoadingPolicy(Map<Integer, Integer> initialUidImportances) {
         super(initialUidImportances);
     }
@@ -94,6 +119,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             mUidsToRequests.computeIfAbsent(callingUid, k -> new HashSet<>()).add(request);
             uidsToRequests = mUidsToRequests;
         }
+
         // Budget that has been requested or loaded, excluding the model request we're currently
         // processing.
         int requestedAndLoadedBudget =
@@ -106,6 +132,10 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         int availableBudget = MAX_BUDGET - requestedAndLoadedBudget;
 
         try {
+            callback.asBinder()
+                    .linkToDeath(
+                            new BudgetModelLoadingPolicy.BinderDeathRecipientUid(callingUid), 0);
+
             if (availableBudget >= getModelWeightFromSizeOrThrow(request.getSize())) {
                 Log.d(TAG, "canLoadModel: CAN_LOAD_NOW");
                 callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);

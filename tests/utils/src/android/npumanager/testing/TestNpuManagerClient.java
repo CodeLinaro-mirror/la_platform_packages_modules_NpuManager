@@ -31,9 +31,12 @@ import java.util.concurrent.TimeUnit;
 public class TestNpuManagerClient {
     private static final String TAG = "TestNpuManagerClient";
     private static final String SERVICE_CLASS = "android.npumanager.testapp.NpuManagerTestService";
+    private static final int MAX_ATTEMPTS = 3;
 
     private final Context mContext;
     private ITestNpuManagerService mService;
+    private final Intent mIntent;
+    private final int mBindServiceFlags;
     private final CountDownLatch mConnectionLatch = new CountDownLatch(1);
 
     private final ServiceConnection mConnection =
@@ -53,17 +56,37 @@ public class TestNpuManagerClient {
     public TestNpuManagerClient(Context context, String packageName, int bindServiceFlags) {
         mContext = context;
         Intent intent = new Intent().setClassName(packageName, SERVICE_CLASS);
+        mIntent = intent;
+        mBindServiceFlags = bindServiceFlags;
         mContext.bindService(intent, mConnection, bindServiceFlags);
     }
 
     private void waitForConnection() {
-        try {
-            if (!mConnectionLatch.await(5, TimeUnit.SECONDS)) {
-                throw new IllegalStateException("Failed to connect to the service");
+        int attempts = 0;
+        while (attempts < MAX_ATTEMPTS) {
+            try {
+                if (!mConnectionLatch.await(5, TimeUnit.SECONDS)) {
+                    ++attempts;
+                    if (attempts == MAX_ATTEMPTS) {
+                        throw new IllegalStateException(
+                                "Failed to connect to the service after "
+                                        + MAX_ATTEMPTS
+                                        + " retries");
+                    }
+                    mContext.bindService(mIntent, mConnection, mBindServiceFlags);
+                } else {
+                    // Successful binding
+                    break;
+                }
+            } catch (InterruptedException e) {
+                attempts++;
+                Thread.currentThread().interrupt();
+                if (attempts == MAX_ATTEMPTS) {
+                    throw new IllegalStateException(
+                            "Interrupted while waiting for service connection", e);
+                }
+                mContext.bindService(mIntent, mConnection, mBindServiceFlags);
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Interrupted while waiting for service connection", e);
         }
     }
 
