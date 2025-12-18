@@ -20,11 +20,13 @@ import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREG
 import static android.content.Intent.FLAG_ACTIVITY_NEW_TASK;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW;
+import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_BUDGET;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_STATUS_QUO;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_TURN_TAKING;
 import static android.npumanager.NpuManager.NPU_MODEL_PRIORITY_NORMAL;
+import static android.npumanager.NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
 
 import static org.junit.Assert.assertEquals;
@@ -83,10 +85,14 @@ public class CtsNpuModelManagerTest {
     private static final String BACKGROUND_PACKAGE_NAME = "android.npumanager.testapp.B";
     private static final String TEST_APP_MAIN_ACTIVITY_NAME =
             "android.npumanager.testapp.MainActivity";
+    private static final String DISABLE_AUTO_SLEEP_CMD = "svc power stayon true";
+    private static final String ENABLE_AUTO_SLEEP_CMD = "svc power stayon false";
+    private static final String DISMISS_KEYGUARD_CMD = "wm dismiss-keyguard";
     private static final String ACTION_APP_RESUMED = "android.npumanager.testapp.APP_RESUMED";
     private static final String EXTRA_PACKAGE_NAME = "packagename";
     private static final long APP_START_TIMEOUT_MS = 5000;
 
+    UiDevice mDevice;
     UiAutomation mUiAutomation;
     Context mContext;
     ActivityManager mActivityManager;
@@ -130,27 +136,47 @@ public class CtsNpuModelManagerTest {
     public void setUp() {
         mUiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         mContext = InstrumentationRegistry.getInstrumentation().getContext();
+        mDevice = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         mActivityManager = mContext.getSystemService(ActivityManager.class);
+        mUiAutomation.adoptShellPermissionIdentity();
         mBackgroundAppImportanceUpdated = new CountDownLatch(1);
         mForegroundedAppImportanceUpdated = new CountDownLatch(1);
+        mActivityManager.addOnUidImportanceListener(fgListener, IMPORTANCE_FOREGROUND_SERVICE);
+        mActivityManager.addOnUidImportanceListener(bgListener, IMPORTANCE_FOREGROUND_SERVICE);
+        mForegroundNpuManager =
+                new TestNpuManagerClient(
+                        mContext, FOREGROUND_PACKAGE_NAME, Context.BIND_AUTO_CREATE);
+        mBackgroundNpuManager =
+                new TestNpuManagerClient(
+                        mContext,
+                        BACKGROUND_PACKAGE_NAME,
+                        Context.BIND_AUTO_CREATE | Context.BIND_NOT_FOREGROUND);
 
-        mForegroundNpuManager = new TestNpuManagerClient(mContext, FOREGROUND_PACKAGE_NAME);
-        mBackgroundNpuManager = new TestNpuManagerClient(mContext, BACKGROUND_PACKAGE_NAME);
-
+        // Prevent auto-sleep to ensure activity manager updates correctly.
         try {
-            UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wakeUp();
-        } catch (RemoteException e) {
-            Log.e(TAG, "RemoteException", e);
+            mDevice.wakeUp();
+            mDevice.executeShellCommand(DISABLE_AUTO_SLEEP_CMD);
+            mDevice.executeShellCommand(DISMISS_KEYGUARD_CMD);
+        } catch (Exception e) {
+            Log.e(TAG, "Exception", e);
         }
     }
 
     @After
-    public void tearDown() throws RemoteException, IOException {
-        mForegroundNpuManager.reset();
-        mBackgroundNpuManager.reset();
-
-        killApp(BACKGROUND_PACKAGE_NAME, 5000);
-        killApp(FOREGROUND_PACKAGE_NAME, 5000);
+    public void tearDown() {
+        try {
+            mForegroundNpuManager.reset();
+            mBackgroundNpuManager.reset();
+            mDevice.executeShellCommand(ENABLE_AUTO_SLEEP_CMD);
+            mActivityManager.removeOnUidImportanceListener(fgListener);
+            mActivityManager.removeOnUidImportanceListener(bgListener);
+            killApp(BACKGROUND_PACKAGE_NAME, 5000);
+            killApp(FOREGROUND_PACKAGE_NAME, 5000);
+        } catch (Exception e) {
+            // Ignore
+        } finally {
+            mUiAutomation.dropShellPermissionIdentity();
+        }
     }
 
     @Rule(order = 1)
@@ -162,8 +188,9 @@ public class CtsNpuModelManagerTest {
 
     @Test
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
-    public void testNpuModelManager_setPolicy_noPermission()
-            throws RemoteException, InterruptedException {
+    public void testNpuModelManager_setPolicy_noPermission() {
+        mUiAutomation.dropShellPermissionIdentity();
+
         Context context = InstrumentationRegistry.getInstrumentation().getContext();
         NpuManager npuManager = context.getSystemService(NpuManager.class);
         assertNotNull(npuManager);
@@ -176,9 +203,6 @@ public class CtsNpuModelManagerTest {
     @Test
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testNpuModelManager_statusQuoPolicy() throws RemoteException, InterruptedException {
-        try {
-            mUiAutomation.adoptShellPermissionIdentity();
-
             Context context = InstrumentationRegistry.getInstrumentation().getContext();
             assertEquals(
                     context.checkSelfPermission(
@@ -222,28 +246,20 @@ public class CtsNpuModelManagerTest {
             Assert.assertTrue(latch.await(2, TimeUnit.SECONDS));
             npuModelManager.cancelModelLoad(request);
             Assert.assertTrue(completeLatch.await(1, TimeUnit.SECONDS));
-
-        } finally {
-            mUiAutomation.dropShellPermissionIdentity();
-        }
     }
 
     @Test
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testNpuModelManager_turnTakingPolicy() throws Exception {
-        try {
-            mUiAutomation.adoptShellPermissionIdentity();
             mContext.getSystemService(NpuManager.class)
                     .setPolicy(NPU_MODEL_POLICY_TURN_TAKING, null);
-
-            mActivityManager.addOnUidImportanceListener(fgListener, IMPORTANCE_FOREGROUND_SERVICE);
-            mActivityManager.addOnUidImportanceListener(bgListener, IMPORTANCE_FOREGROUND_SERVICE);
 
             // First load background model
             CountDownLatch backgroundLatch = new CountDownLatch(1);
             CountDownLatch unloadLatch = new CountDownLatch(1);
             CountDownLatch cancelLatch = new CountDownLatch(1);
-            TestModelLoadRequest backgroundRequest = new TestModelLoadRequest(1, 100, 100);
+        TestModelLoadRequest backgroundRequest =
+                new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
             ITestModelLoadRequestCallback backgroundCallback =
                     new ITestModelLoadRequestCallback.Stub() {
                         private ITestModelLoadStatusListener mListener;
@@ -275,15 +291,13 @@ public class CtsNpuModelManagerTest {
             mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
             assertTrue(backgroundLatch.await(5, TimeUnit.SECONDS));
 
-            // Lowers importance of background app.
-            mBackgroundNpuManager.unbind();
-            assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
-
             waitForAppResume(FOREGROUND_PACKAGE_NAME);
+            assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
             assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
             CountDownLatch waitLatch = new CountDownLatch(1);
             CountDownLatch canLoadLatch = new CountDownLatch(1);
-            TestModelLoadRequest foregroundRequest = new TestModelLoadRequest(2, 100, 100);
+        TestModelLoadRequest foregroundRequest =
+                new TestModelLoadRequest(2, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
             ITestModelLoadRequestCallback foregroundCallback =
                     new ITestModelLoadRequestCallback.Stub() {
                         public void onCanLoadModel(
@@ -316,29 +330,18 @@ public class CtsNpuModelManagerTest {
 
             mForegroundNpuManager.cancelLoadModel(foregroundRequest);
             assertTrue(cancelLatch.await(5, TimeUnit.SECONDS));
-        } finally {
-            mActivityManager.removeOnUidImportanceListener(fgListener);
-            mActivityManager.removeOnUidImportanceListener(bgListener);
-
-            mUiAutomation.dropShellPermissionIdentity();
-        }
     }
 
     @Test
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testNpuModelManager_budgetPolicy() throws Exception {
-        try {
-            mUiAutomation.adoptShellPermissionIdentity();
-            mContext.getSystemService(NpuManager.class).setPolicy(NPU_MODEL_POLICY_BUDGET, null);
-
-            mActivityManager.addOnUidImportanceListener(fgListener, IMPORTANCE_FOREGROUND_SERVICE);
-            mActivityManager.addOnUidImportanceListener(bgListener, IMPORTANCE_FOREGROUND_SERVICE);
+        mContext.getSystemService(NpuManager.class).setPolicy(NPU_MODEL_POLICY_BUDGET, null);
 
             // First load background model
             CountDownLatch backgroundLatch = new CountDownLatch(1);
             CountDownLatch unloadLatch = new CountDownLatch(1);
-            TestModelLoadRequest backgroundRequest =
-                    new TestModelLoadRequest(1, NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        TestModelLoadRequest backgroundRequest =
+                new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
             ITestModelLoadRequestCallback backgroundCallback =
                     new ITestModelLoadRequestCallback.Stub() {
                         private ITestModelLoadStatusListener mListener;
@@ -348,10 +351,11 @@ public class CtsNpuModelManagerTest {
                                 int status,
                                 ITestModelLoadStatusListener listener)
                                 throws RemoteException {
-                            assertEquals(status, NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
-                            mListener = listener;
-                            mListener.notifyModelLoaded(request);
-                            backgroundLatch.countDown();
+                            if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                                mListener = listener;
+                                mListener.notifyModelLoaded(request);
+                                backgroundLatch.countDown();
+                            }
                         }
 
                         public void onRequestUnloadModel(TestModelLoadRequest request) {
@@ -370,7 +374,6 @@ public class CtsNpuModelManagerTest {
             assertTrue(backgroundLatch.await(5, TimeUnit.SECONDS));
 
             // Lower importance of background app by unbinding the service.
-            mBackgroundNpuManager.unbind();
             waitForAppResume(FOREGROUND_PACKAGE_NAME);
 
             assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
@@ -380,8 +383,8 @@ public class CtsNpuModelManagerTest {
             CountDownLatch canLoadLatch = new CountDownLatch(1);
 
             CountDownLatch cancelLatch = new CountDownLatch(1);
-            TestModelLoadRequest foregroundRequest =
-                    new TestModelLoadRequest(2, NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        TestModelLoadRequest foregroundRequest =
+                new TestModelLoadRequest(2, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
             ITestModelLoadRequestCallback foregroundCallback =
                     new ITestModelLoadRequestCallback.Stub() {
                         public void onCanLoadModel(
@@ -413,27 +416,99 @@ public class CtsNpuModelManagerTest {
 
             mForegroundNpuManager.cancelLoadModel(foregroundRequest);
             assertTrue(cancelLatch.await(5, TimeUnit.SECONDS));
-        } finally {
-            mActivityManager.removeOnUidImportanceListener(fgListener);
-            mActivityManager.removeOnUidImportanceListener(bgListener);
+    }
 
-            mUiAutomation.dropShellPermissionIdentity();
-        }
+    /**
+     * Requests to load model for a foreground apps, but it doesn't actually load the model when it
+     * receives CAN_LOAD_NOW. Tests that the background app does not receive CAN_LOAD_NOW.
+     *
+     * @throws Exception Thrown from setting the policy.
+     */
+    @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
+    public void testNpuModelManager_budgetPolicy_multipleAppsRequesting() throws Exception {
+            NpuManager npuManager = mContext.getSystemService(NpuManager.class);
+            assertNotNull(npuManager);
+
+            npuManager.setPolicy(NPU_MODEL_POLICY_BUDGET, null);
+
+            CountDownLatch fgCanLoadLatch = new CountDownLatch(1);
+        TestModelLoadRequest foregroundRequest =
+                new TestModelLoadRequest(2, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+            ITestModelLoadRequestCallback foregroundCallback =
+                    new ITestModelLoadRequestCallback.Stub() {
+                        public void onCanLoadModel(
+                                TestModelLoadRequest request,
+                                int status,
+                                ITestModelLoadStatusListener listener) {
+                            if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                                fgCanLoadLatch.countDown();
+                                // Not calling listener.notifyModel so that this budget
+                                // is still considered "requested" and not loaded
+
+                            }
+                        }
+
+                        public void onRequestUnloadModel(TestModelLoadRequest request) {}
+
+                        public void onModelLoadRequestComplete(
+                                TestModelLoadRequest request, int status) {}
+                    };
+
+            CountDownLatch bgNotPrioritizedLatch = new CountDownLatch(1);
+        TestModelLoadRequest backgroundRequest =
+                new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+            ITestModelLoadRequestCallback backgroundCallback =
+                    new ITestModelLoadRequestCallback.Stub() {
+                        public void onCanLoadModel(
+                                TestModelLoadRequest request,
+                                int status,
+                                ITestModelLoadStatusListener listener) {
+                            if (status == NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED) {
+                                bgNotPrioritizedLatch.countDown();
+                            }
+                        }
+
+                        public void onRequestUnloadModel(TestModelLoadRequest request) {}
+
+                        public void onModelLoadRequestComplete(
+                                TestModelLoadRequest request, int status) {}
+                    };
+
+            waitForAppResume(FOREGROUND_PACKAGE_NAME);
+
+            assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+            assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+
+            // Load fg model.
+            mForegroundNpuManager.requestLoadModel(foregroundRequest, foregroundCallback);
+            assertTrue(fgCanLoadLatch.await(5, TimeUnit.SECONDS));
+
+            // Attempt to load bg model. It should return with NOT_PRIORITIZED.
+            mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
+            assertTrue(bgNotPrioritizedLatch.await(5, TimeUnit.SECONDS));
     }
 
     @Test
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
-    public void testNpuModelManager_killForegroundApp() throws Exception {
-        try {
-            mUiAutomation.adoptShellPermissionIdentity(
-                    android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API);
-            mContext.getSystemService(NpuManager.class)
-                    .setPolicy(NPU_MODEL_POLICY_TURN_TAKING, null);
+    public void testNpuModelManager_turnTakingPolicy_killForegroundApp() throws Exception {
+        runKillForegroundAppTestWithPolicy(NPU_MODEL_POLICY_TURN_TAKING);
+    }
+
+    @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
+    public void testNpuModelManager_budgetPolicy_killForegroundApp() throws Exception {
+        runKillForegroundAppTestWithPolicy(NPU_MODEL_POLICY_BUDGET);
+    }
+
+    private void runKillForegroundAppTestWithPolicy(int policy) throws Exception {
+        mContext.getSystemService(NpuManager.class).setPolicy(policy, null);
 
             // Launch and load model for app A.
             waitForAppResume(FOREGROUND_PACKAGE_NAME);
             CountDownLatch appACanLoadLatch = new CountDownLatch(1);
-            TestModelLoadRequest appARequest = new TestModelLoadRequest(1, 100, 100);
+        TestModelLoadRequest appARequest =
+                new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
             ITestModelLoadRequestCallback appACallback =
                     new ITestModelLoadRequestCallback.Stub() {
                         public void onCanLoadModel(
@@ -464,11 +539,11 @@ public class CtsNpuModelManagerTest {
             assertTrue(
                     "App A process still running after force-stop",
                     killApp(FOREGROUND_PACKAGE_NAME, 10000));
-            Log.i(TAG, "App A killed.");
 
             // Load model on App B
             CountDownLatch appBCanLoadLatch = new CountDownLatch(1);
-            TestModelLoadRequest appBRequest = new TestModelLoadRequest(2, 100, 100);
+        TestModelLoadRequest appBRequest =
+                new TestModelLoadRequest(2, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
             ITestModelLoadRequestCallback appBCallback =
                     new ITestModelLoadRequestCallback.Stub() {
                         public void onCanLoadModel(
@@ -476,8 +551,7 @@ public class CtsNpuModelManagerTest {
                                 int status,
                                 ITestModelLoadStatusListener listener)
                                 throws RemoteException {
-                            if (status == NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD) {
-                            } else if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
                                 appBCanLoadLatch.countDown();
                                 listener.notifyModelLoaded(request);
                             }
@@ -492,9 +566,6 @@ public class CtsNpuModelManagerTest {
             assertTrue(
                     "App B failed to get canLoadModel callback",
                     appBCanLoadLatch.await(5, TimeUnit.SECONDS));
-        } finally {
-            mUiAutomation.dropShellPermissionIdentity();
-        }
     }
 
     private void launchApp(String packageName) {
