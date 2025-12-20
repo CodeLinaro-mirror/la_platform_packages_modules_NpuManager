@@ -54,17 +54,9 @@ import java.util.Set;
 class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     private static final String TAG = "NpuBudgetPolicy";
 
-    // TODO accept weights in policy params Bundle.
-    private final Map<Integer, Integer> mModelSizeWeights =
-            Map.of(
-                    NPU_MODEL_SIZE_LESS_THAN_1GB, 1,
-                    NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB, 2,
-                    NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
+    private final Map<Integer, Integer> mModelSizeWeights;
 
-    // By default budget one large model
-    // TODO accept this budget in policy params Bundle.
-    private final int MAX_BUDGET =
-            mModelSizeWeights.getOrDefault(NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
+    private final int mMaxBudget;
 
     @GuardedBy("this")
     private final Map<ModelLoadRequest, ModelLoadRequestInfo> mRequests = new HashMap<>();
@@ -98,6 +90,23 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
 
     BudgetModelLoadingPolicy(Map<Integer, Integer> initialUidImportances) {
         super(initialUidImportances);
+        mModelSizeWeights =
+                Map.of(
+                        NPU_MODEL_SIZE_LESS_THAN_1GB, 1,
+                        NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB, 2,
+                        NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
+
+        // By default budget one large model
+        mMaxBudget = mModelSizeWeights.getOrDefault(NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
+    }
+
+    BudgetModelLoadingPolicy(
+            Map<Integer, Integer> initialUidImportances,
+            Map<Integer, Integer> modelSizeWeights,
+            int maxBudget) {
+        super(initialUidImportances);
+        mModelSizeWeights = modelSizeWeights;
+        mMaxBudget = maxBudget;
     }
 
     @Override
@@ -129,7 +138,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                                 modelLoadRequest ->
                                         getModelWeightFromSizeOrThrow(modelLoadRequest.getSize()))
                         .sum();
-        int availableBudget = MAX_BUDGET - requestedAndLoadedBudget;
+        int availableBudget = mMaxBudget - requestedAndLoadedBudget;
 
         try {
             callback.asBinder()
@@ -290,7 +299,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         List<Integer> sortedUids = getMostImportantUids();
 
         // Determine ideal requests that should be loaded.
-        int budget = MAX_BUDGET;
+        int budget = mMaxBudget;
         Set<ModelLoadRequest> idealRequests =
                 new HashSet<>(); // The models that should ideally be loaded;
         for (int uid : sortedUids) {

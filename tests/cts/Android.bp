@@ -28,7 +28,7 @@ python_test_host {
         "mobly_device_flags",
         "platform-test-py-annotations",
     ],
-    test_config: "AndroidTest.xml",
+    test_config: "AndroidMoblyTest.xml",
     test_options: {
         unit_test: false,
         runner: "mobly",
@@ -62,7 +62,7 @@ android_test {
     srcs: [
         "src/**/*.java",
     ],
-    // Tag this module as a cts test artifact
+    test_config: "AndroidTest.xml",
     test_suites: [
         "cts",
         "general-tests",

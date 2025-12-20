@@ -203,133 +203,132 @@ public class CtsNpuModelManagerTest {
     @Test
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testNpuModelManager_statusQuoPolicy() throws RemoteException, InterruptedException {
-            Context context = InstrumentationRegistry.getInstrumentation().getContext();
-            assertEquals(
-                    context.checkSelfPermission(
-                            android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API),
-                    PackageManager.PERMISSION_GRANTED);
-            NpuManager npuModelManager = context.getSystemService(NpuManager.class);
-            assertNotNull(npuModelManager);
+        Context context = InstrumentationRegistry.getInstrumentation().getContext();
+        assertEquals(
+                context.checkSelfPermission(
+                        android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API),
+                PackageManager.PERMISSION_GRANTED);
+        NpuManager npuModelManager = context.getSystemService(NpuManager.class);
+        assertNotNull(npuModelManager);
 
-            npuModelManager.setPolicy(NPU_MODEL_POLICY_STATUS_QUO, null);
-            CountDownLatch latch = new CountDownLatch(1);
-            CountDownLatch completeLatch = new CountDownLatch(1);
-            ModelLoadRequest request =
-                    new ModelLoadRequest.Builder(54)
-                            .setSize(NPU_MODEL_SIZE_LESS_THAN_1GB)
-                            .setPriority(NPU_MODEL_PRIORITY_NORMAL)
-                            .build();
-            ModelLoadRequestCallback callback =
-                    new ModelLoadRequestCallback() {
-                        public void onCanLoadModel(
-                                ModelLoadRequest req,
-                                int status,
-                                NpuManager.ModelLoadStatusListener listener) {
-                            assertEquals(status, NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
-                            Assert.assertEquals(req, request);
-                            Assert.assertEquals(status, NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
-                            latch.countDown();
-                        }
+        npuModelManager.setPolicy(NPU_MODEL_POLICY_STATUS_QUO, null);
+        CountDownLatch latch = new CountDownLatch(1);
+        CountDownLatch completeLatch = new CountDownLatch(1);
+        ModelLoadRequest request =
+                new ModelLoadRequest.Builder(54)
+                        .setSize(NPU_MODEL_SIZE_LESS_THAN_1GB)
+                        .setPriority(NPU_MODEL_PRIORITY_NORMAL)
+                        .build();
+        ModelLoadRequestCallback callback =
+                new ModelLoadRequestCallback() {
+                    public void onCanLoadModel(
+                            ModelLoadRequest req,
+                            int status,
+                            NpuManager.ModelLoadStatusListener listener) {
+                        assertEquals(status, NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
+                        Assert.assertEquals(req, request);
+                        Assert.assertEquals(status, NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
+                        latch.countDown();
+                    }
 
-                        public void onRequestUnloadModel(ModelLoadRequest request) {}
+                    public void onRequestUnloadModel(ModelLoadRequest request) {}
 
-                        public void onModelLoadRequestComplete(ModelLoadRequest req, int status) {
-                            Assert.assertEquals(req, request);
+                    public void onModelLoadRequestComplete(ModelLoadRequest req, int status) {
+                        Assert.assertEquals(req, request);
 
-                            Assert.assertEquals(status, NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED);
-                            completeLatch.countDown();
-                        }
-                    };
+                        Assert.assertEquals(status, NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED);
+                        completeLatch.countDown();
+                    }
+                };
 
-            npuModelManager.requestLoadModel(request, callback);
+        npuModelManager.requestLoadModel(request, callback);
 
-            Assert.assertTrue(latch.await(2, TimeUnit.SECONDS));
-            npuModelManager.cancelModelLoad(request);
-            Assert.assertTrue(completeLatch.await(1, TimeUnit.SECONDS));
+        Assert.assertTrue(latch.await(2, TimeUnit.SECONDS));
+        npuModelManager.cancelModelLoad(request);
+        Assert.assertTrue(completeLatch.await(1, TimeUnit.SECONDS));
     }
 
     @Test
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testNpuModelManager_turnTakingPolicy() throws Exception {
-            mContext.getSystemService(NpuManager.class)
-                    .setPolicy(NPU_MODEL_POLICY_TURN_TAKING, null);
+        mContext.getSystemService(NpuManager.class).setPolicy(NPU_MODEL_POLICY_TURN_TAKING, null);
 
-            // First load background model
-            CountDownLatch backgroundLatch = new CountDownLatch(1);
-            CountDownLatch unloadLatch = new CountDownLatch(1);
-            CountDownLatch cancelLatch = new CountDownLatch(1);
+        // First load background model
+        CountDownLatch backgroundLatch = new CountDownLatch(1);
+        CountDownLatch unloadLatch = new CountDownLatch(1);
+        CountDownLatch cancelLatch = new CountDownLatch(1);
         TestModelLoadRequest backgroundRequest =
                 new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
-            ITestModelLoadRequestCallback backgroundCallback =
-                    new ITestModelLoadRequestCallback.Stub() {
-                        private ITestModelLoadStatusListener mListener;
+        ITestModelLoadRequestCallback backgroundCallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    private ITestModelLoadStatusListener mListener;
 
-                        public void onCanLoadModel(
-                                TestModelLoadRequest request,
-                                int status,
-                                ITestModelLoadStatusListener listener)
-                                throws RemoteException {
-                            if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
-                                mListener = listener;
-                                mListener.notifyModelLoaded(request);
-                                backgroundLatch.countDown();
-                            }
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener)
+                            throws RemoteException {
+                        if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            mListener = listener;
+                            mListener.notifyModelLoaded(request);
+                            backgroundLatch.countDown();
                         }
+                    }
 
-                        public void onRequestUnloadModel(TestModelLoadRequest request) {
-                            try {
-                                unloadLatch.countDown();
-                                mListener.notifyModelUnloaded(request);
-                            } catch (Exception e) {
-                                throw new RuntimeException(e);
-                            }
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {
+                        try {
+                            unloadLatch.countDown();
+                            mListener.notifyModelUnloaded(request);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
                         }
+                    }
 
-                        public void onModelLoadRequestComplete(
-                                TestModelLoadRequest request, int status) {}
-                    };
-            mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
-            assertTrue(backgroundLatch.await(5, TimeUnit.SECONDS));
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {}
+                };
+        mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
+        assertTrue(backgroundLatch.await(5, TimeUnit.SECONDS));
 
-            waitForAppResume(FOREGROUND_PACKAGE_NAME);
-            assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
-            assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
-            CountDownLatch waitLatch = new CountDownLatch(1);
-            CountDownLatch canLoadLatch = new CountDownLatch(1);
+        waitForAppResume(FOREGROUND_PACKAGE_NAME);
+        assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+        assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+        CountDownLatch waitLatch = new CountDownLatch(1);
+        CountDownLatch canLoadLatch = new CountDownLatch(1);
         TestModelLoadRequest foregroundRequest =
                 new TestModelLoadRequest(2, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
-            ITestModelLoadRequestCallback foregroundCallback =
-                    new ITestModelLoadRequestCallback.Stub() {
-                        public void onCanLoadModel(
-                                TestModelLoadRequest request,
-                                int status,
-                                ITestModelLoadStatusListener listener)
-                                throws RemoteException {
-                            if (status == NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD) {
-                                waitLatch.countDown();
-                            } else if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
-                                canLoadLatch.countDown();
-                                listener.notifyModelLoaded(request);
-                            }
+        ITestModelLoadRequestCallback foregroundCallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener)
+                            throws RemoteException {
+                        if (status == NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD) {
+                            waitLatch.countDown();
+                        } else if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            canLoadLatch.countDown();
+                            listener.notifyModelLoaded(request);
                         }
+                    }
 
-                        public void onRequestUnloadModel(TestModelLoadRequest request) {}
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {}
 
-                        public void onModelLoadRequestComplete(
-                                TestModelLoadRequest request, int status) {
-                            if (status == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
-                                assertEquals(foregroundRequest.id, request.id);
-                                cancelLatch.countDown();
-                            }
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {
+                        if (status == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
+                            assertEquals(foregroundRequest.id, request.id);
+                            cancelLatch.countDown();
                         }
-                    };
-            mForegroundNpuManager.requestLoadModel(foregroundRequest, foregroundCallback);
-            assertTrue(waitLatch.await(5, TimeUnit.SECONDS));
-            assertTrue(unloadLatch.await(5, TimeUnit.SECONDS));
-            assertTrue(canLoadLatch.await(5, TimeUnit.SECONDS));
+                    }
+                };
+        mForegroundNpuManager.requestLoadModel(foregroundRequest, foregroundCallback);
+        assertTrue(waitLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(unloadLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(canLoadLatch.await(5, TimeUnit.SECONDS));
 
-            mForegroundNpuManager.cancelLoadModel(foregroundRequest);
-            assertTrue(cancelLatch.await(5, TimeUnit.SECONDS));
+        mForegroundNpuManager.cancelLoadModel(foregroundRequest);
+        assertTrue(cancelLatch.await(5, TimeUnit.SECONDS));
     }
 
     @Test
@@ -337,85 +336,85 @@ public class CtsNpuModelManagerTest {
     public void testNpuModelManager_budgetPolicy() throws Exception {
         mContext.getSystemService(NpuManager.class).setPolicy(NPU_MODEL_POLICY_BUDGET, null);
 
-            // First load background model
-            CountDownLatch backgroundLatch = new CountDownLatch(1);
-            CountDownLatch unloadLatch = new CountDownLatch(1);
+        // First load background model
+        CountDownLatch backgroundLatch = new CountDownLatch(1);
+        CountDownLatch unloadLatch = new CountDownLatch(1);
         TestModelLoadRequest backgroundRequest =
                 new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
-            ITestModelLoadRequestCallback backgroundCallback =
-                    new ITestModelLoadRequestCallback.Stub() {
-                        private ITestModelLoadStatusListener mListener;
+        ITestModelLoadRequestCallback backgroundCallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    private ITestModelLoadStatusListener mListener;
 
-                        public void onCanLoadModel(
-                                TestModelLoadRequest request,
-                                int status,
-                                ITestModelLoadStatusListener listener)
-                                throws RemoteException {
-                            if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
-                                mListener = listener;
-                                mListener.notifyModelLoaded(request);
-                                backgroundLatch.countDown();
-                            }
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener)
+                            throws RemoteException {
+                        if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            mListener = listener;
+                            mListener.notifyModelLoaded(request);
+                            backgroundLatch.countDown();
                         }
+                    }
 
-                        public void onRequestUnloadModel(TestModelLoadRequest request) {
-                            try {
-                                unloadLatch.countDown();
-                                mListener.notifyModelUnloaded(request);
-                            } catch (Exception e) {
-                                throw new RuntimeException(e);
-                            }
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {
+                        try {
+                            unloadLatch.countDown();
+                            mListener.notifyModelUnloaded(request);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
                         }
+                    }
 
-                        public void onModelLoadRequestComplete(
-                                TestModelLoadRequest request, int status) {}
-                    };
-            mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
-            assertTrue(backgroundLatch.await(5, TimeUnit.SECONDS));
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {}
+                };
+        mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
+        assertTrue(backgroundLatch.await(5, TimeUnit.SECONDS));
 
-            // Lower importance of background app by unbinding the service.
-            waitForAppResume(FOREGROUND_PACKAGE_NAME);
+        // Lower importance of background app by unbinding the service.
+        waitForAppResume(FOREGROUND_PACKAGE_NAME);
 
-            assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
-            assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+        assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+        assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
 
-            CountDownLatch waitLatch = new CountDownLatch(1);
-            CountDownLatch canLoadLatch = new CountDownLatch(1);
+        CountDownLatch waitLatch = new CountDownLatch(1);
+        CountDownLatch canLoadLatch = new CountDownLatch(1);
 
-            CountDownLatch cancelLatch = new CountDownLatch(1);
+        CountDownLatch cancelLatch = new CountDownLatch(1);
         TestModelLoadRequest foregroundRequest =
                 new TestModelLoadRequest(2, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
-            ITestModelLoadRequestCallback foregroundCallback =
-                    new ITestModelLoadRequestCallback.Stub() {
-                        public void onCanLoadModel(
-                                TestModelLoadRequest request,
-                                int status,
-                                ITestModelLoadStatusListener listener)
-                                throws RemoteException {
-                            if (status == NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD) {
-                                waitLatch.countDown();
-                            } else if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
-                                canLoadLatch.countDown();
-                                listener.notifyModelLoaded(request);
-                            }
+        ITestModelLoadRequestCallback foregroundCallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener)
+                            throws RemoteException {
+                        if (status == NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD) {
+                            waitLatch.countDown();
+                        } else if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            canLoadLatch.countDown();
+                            listener.notifyModelLoaded(request);
                         }
+                    }
 
-                        public void onRequestUnloadModel(TestModelLoadRequest request) {}
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {}
 
-                        public void onModelLoadRequestComplete(
-                                TestModelLoadRequest request, int status) {
-                            if (status == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
-                                cancelLatch.countDown();
-                            }
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {
+                        if (status == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
+                            cancelLatch.countDown();
                         }
-                    };
-            mForegroundNpuManager.requestLoadModel(foregroundRequest, foregroundCallback);
-            assertTrue(waitLatch.await(5, TimeUnit.SECONDS));
-            assertTrue(unloadLatch.await(5, TimeUnit.SECONDS));
-            assertTrue(canLoadLatch.await(5, TimeUnit.SECONDS));
+                    }
+                };
+        mForegroundNpuManager.requestLoadModel(foregroundRequest, foregroundCallback);
+        assertTrue(waitLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(unloadLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(canLoadLatch.await(5, TimeUnit.SECONDS));
 
-            mForegroundNpuManager.cancelLoadModel(foregroundRequest);
-            assertTrue(cancelLatch.await(5, TimeUnit.SECONDS));
+        mForegroundNpuManager.cancelLoadModel(foregroundRequest);
+        assertTrue(cancelLatch.await(5, TimeUnit.SECONDS));
     }
 
     /**
@@ -427,66 +426,66 @@ public class CtsNpuModelManagerTest {
     @Test
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testNpuModelManager_budgetPolicy_multipleAppsRequesting() throws Exception {
-            NpuManager npuManager = mContext.getSystemService(NpuManager.class);
-            assertNotNull(npuManager);
+        NpuManager npuManager = mContext.getSystemService(NpuManager.class);
+        assertNotNull(npuManager);
 
-            npuManager.setPolicy(NPU_MODEL_POLICY_BUDGET, null);
+        npuManager.setPolicy(NPU_MODEL_POLICY_BUDGET, null);
 
-            CountDownLatch fgCanLoadLatch = new CountDownLatch(1);
+        CountDownLatch fgCanLoadLatch = new CountDownLatch(1);
         TestModelLoadRequest foregroundRequest =
                 new TestModelLoadRequest(2, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
-            ITestModelLoadRequestCallback foregroundCallback =
-                    new ITestModelLoadRequestCallback.Stub() {
-                        public void onCanLoadModel(
-                                TestModelLoadRequest request,
-                                int status,
-                                ITestModelLoadStatusListener listener) {
-                            if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
-                                fgCanLoadLatch.countDown();
-                                // Not calling listener.notifyModel so that this budget
-                                // is still considered "requested" and not loaded
+        ITestModelLoadRequestCallback foregroundCallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener) {
+                        if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            fgCanLoadLatch.countDown();
+                            // Not calling listener.notifyModel so that this budget
+                            // is still considered "requested" and not loaded
 
-                            }
                         }
+                    }
 
-                        public void onRequestUnloadModel(TestModelLoadRequest request) {}
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {}
 
-                        public void onModelLoadRequestComplete(
-                                TestModelLoadRequest request, int status) {}
-                    };
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {}
+                };
 
-            CountDownLatch bgNotPrioritizedLatch = new CountDownLatch(1);
+        CountDownLatch bgNotPrioritizedLatch = new CountDownLatch(1);
         TestModelLoadRequest backgroundRequest =
                 new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
-            ITestModelLoadRequestCallback backgroundCallback =
-                    new ITestModelLoadRequestCallback.Stub() {
-                        public void onCanLoadModel(
-                                TestModelLoadRequest request,
-                                int status,
-                                ITestModelLoadStatusListener listener) {
-                            if (status == NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED) {
-                                bgNotPrioritizedLatch.countDown();
-                            }
+        ITestModelLoadRequestCallback backgroundCallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener) {
+                        if (status == NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED) {
+                            bgNotPrioritizedLatch.countDown();
                         }
+                    }
 
-                        public void onRequestUnloadModel(TestModelLoadRequest request) {}
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {}
 
-                        public void onModelLoadRequestComplete(
-                                TestModelLoadRequest request, int status) {}
-                    };
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {}
+                };
 
-            waitForAppResume(FOREGROUND_PACKAGE_NAME);
+        waitForAppResume(FOREGROUND_PACKAGE_NAME);
 
-            assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
-            assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+        assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+        assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
 
-            // Load fg model.
-            mForegroundNpuManager.requestLoadModel(foregroundRequest, foregroundCallback);
-            assertTrue(fgCanLoadLatch.await(5, TimeUnit.SECONDS));
+        // Load fg model.
+        mForegroundNpuManager.requestLoadModel(foregroundRequest, foregroundCallback);
+        assertTrue(fgCanLoadLatch.await(5, TimeUnit.SECONDS));
 
-            // Attempt to load bg model. It should return with NOT_PRIORITIZED.
-            mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
-            assertTrue(bgNotPrioritizedLatch.await(5, TimeUnit.SECONDS));
+        // Attempt to load bg model. It should return with NOT_PRIORITIZED.
+        mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
+        assertTrue(bgNotPrioritizedLatch.await(5, TimeUnit.SECONDS));
     }
 
     @Test
@@ -504,68 +503,68 @@ public class CtsNpuModelManagerTest {
     private void runKillForegroundAppTestWithPolicy(int policy) throws Exception {
         mContext.getSystemService(NpuManager.class).setPolicy(policy, null);
 
-            // Launch and load model for app A.
-            waitForAppResume(FOREGROUND_PACKAGE_NAME);
-            CountDownLatch appACanLoadLatch = new CountDownLatch(1);
+        // Launch and load model for app A.
+        waitForAppResume(FOREGROUND_PACKAGE_NAME);
+        CountDownLatch appACanLoadLatch = new CountDownLatch(1);
         TestModelLoadRequest appARequest =
                 new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
-            ITestModelLoadRequestCallback appACallback =
-                    new ITestModelLoadRequestCallback.Stub() {
-                        public void onCanLoadModel(
-                                TestModelLoadRequest request,
-                                int status,
-                                ITestModelLoadStatusListener listener)
-                                throws RemoteException {
-                            if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
-                                appACanLoadLatch.countDown();
-                                listener.notifyModelLoaded(request);
-                            }
+        ITestModelLoadRequestCallback appACallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener)
+                            throws RemoteException {
+                        if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            appACanLoadLatch.countDown();
+                            listener.notifyModelLoaded(request);
                         }
+                    }
 
-                        public void onRequestUnloadModel(TestModelLoadRequest request) {}
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {}
 
-                        public void onModelLoadRequestComplete(
-                                TestModelLoadRequest request, int status) {}
-                    };
-            mForegroundNpuManager.requestLoadModel(appARequest, appACallback);
-            assertTrue(
-                    "App A failed to get canLoadModel callback",
-                    appACanLoadLatch.await(5, TimeUnit.SECONDS));
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {}
+                };
+        mForegroundNpuManager.requestLoadModel(appARequest, appACallback);
+        assertTrue(
+                "App A failed to get canLoadModel callback",
+                appACanLoadLatch.await(5, TimeUnit.SECONDS));
 
-            // Launch background app.
-            waitForAppResume(BACKGROUND_PACKAGE_NAME);
+        // Launch background app.
+        waitForAppResume(BACKGROUND_PACKAGE_NAME);
 
-            // Kill foreground app.
-            assertTrue(
-                    "App A process still running after force-stop",
-                    killApp(FOREGROUND_PACKAGE_NAME, 10000));
+        // Kill foreground app.
+        assertTrue(
+                "App A process still running after force-stop",
+                killApp(FOREGROUND_PACKAGE_NAME, 10000));
 
-            // Load model on App B
-            CountDownLatch appBCanLoadLatch = new CountDownLatch(1);
+        // Load model on App B
+        CountDownLatch appBCanLoadLatch = new CountDownLatch(1);
         TestModelLoadRequest appBRequest =
                 new TestModelLoadRequest(2, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
-            ITestModelLoadRequestCallback appBCallback =
-                    new ITestModelLoadRequestCallback.Stub() {
-                        public void onCanLoadModel(
-                                TestModelLoadRequest request,
-                                int status,
-                                ITestModelLoadStatusListener listener)
-                                throws RemoteException {
-                            if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
-                                appBCanLoadLatch.countDown();
-                                listener.notifyModelLoaded(request);
-                            }
+        ITestModelLoadRequestCallback appBCallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener)
+                            throws RemoteException {
+                        if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            appBCanLoadLatch.countDown();
+                            listener.notifyModelLoaded(request);
                         }
+                    }
 
-                        public void onRequestUnloadModel(TestModelLoadRequest request) {}
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {}
 
-                        public void onModelLoadRequestComplete(
-                                TestModelLoadRequest request, int status) {}
-                    };
-            mBackgroundNpuManager.requestLoadModel(appBRequest, appBCallback);
-            assertTrue(
-                    "App B failed to get canLoadModel callback",
-                    appBCanLoadLatch.await(5, TimeUnit.SECONDS));
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {}
+                };
+        mBackgroundNpuManager.requestLoadModel(appBRequest, appBCallback);
+        assertTrue(
+                "App B failed to get canLoadModel callback",
+                appBCanLoadLatch.await(5, TimeUnit.SECONDS));
     }
 
     private void launchApp(String packageName) {
