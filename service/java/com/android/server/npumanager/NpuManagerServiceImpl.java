@@ -16,6 +16,7 @@
 
 package com.android.server.npumanager;
 
+import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_BUDGET;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_STATUS_QUO;
@@ -162,6 +163,14 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
                 configs.add(config);
             }
         }
+        // Add a config for ROOT
+        SchedulingConfig config = new SchedulingConfig();
+        config.priority = IMPORTANCE_FOREGROUND;
+        config.uid = Process.ROOT_UID;
+        config.hasDirectAccess = true;
+        config.canAttributeOtherUid = true;
+        configs.add(config);
+
         ensureHalService();
         try {
             if (mScheduling != null) {

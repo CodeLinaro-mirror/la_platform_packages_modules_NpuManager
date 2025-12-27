@@ -23,6 +23,7 @@ import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
 
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -101,8 +102,13 @@ abstract class NpuModelLoadingPolicy {
     }
 
     protected List<Integer> getMostImportantUids() {
+        return getMostImportantUids(Map.Entry.comparingByValue());
+    }
+
+    protected List<Integer> getMostImportantUids(
+            Comparator<Map.Entry<Integer, Integer>> comparator) {
         return mUidImportanceMap.entrySet().stream()
-                .sorted(Map.Entry.comparingByValue())
+                .sorted(comparator)
                 .map(Map.Entry::getKey)
                 .collect(Collectors.toList());
     }
