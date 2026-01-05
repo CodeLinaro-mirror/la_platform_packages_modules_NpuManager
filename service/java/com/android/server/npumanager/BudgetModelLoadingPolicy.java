@@ -196,6 +196,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             // If we found the budget, ask the models to unload or cancel the requests, otherwise
             // the new request is not prioritized.
             if (neededBudget <= 0) {
+                boolean unloadingModels = false;
                 for (ModelLoadRequest r : requestsToCancelOrUnload) {
                     ModelLoadRequestInfo modelRequestInfo = mRequests.get(r);
                     if (modelRequestInfo == null || modelRequestInfo.getCallback() == null) {
@@ -206,6 +207,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                         if (modelRequestInfo.getState()
                                 == ModelLoadRequestInfo.RequestState.LOADED) {
                             requestUnloadModel(r);
+                            unloadingModels = true;
                         } else {
                             Log.w(TAG, "Cancelling pending model r: " + r);
                             handleModelLoadCancelled(r);
@@ -213,8 +215,10 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     }
                 }
 
-                Log.d(TAG, "canLoadModel: WAIT_FOR_UNLOAD");
-                callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD);
+                if (unloadingModels) {
+                    Log.d(TAG, "canLoadModel: WAIT_FOR_UNLOAD");
+                    callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD);
+                }
             } else {
                 Log.d(TAG, "canLoadModel: NOT_PRIORITIZED");
                 callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED);
@@ -239,6 +243,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         }
 
         removeRequest(request);
+        evaluateAndLoadHighestPriorityModels();
     }
 
     @Override
