@@ -32,24 +32,25 @@ import android.npumanager.ModelLoadRequest;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.RemoteException;
+import android.os.SystemClock;
 import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
 
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * A model loading policy that allows multiple models to be loaded at a time as long as they all fit
  * within a specified memory budget. When the requested loads exceed this budget, lower priority
  * UIDs will have their models unloaded.
- *
- * <p>TODO(b/462125442) Use onWorkEnded() status callback to switch between models of equal
- * priority.
  */
 class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     private static final String TAG = "NpuBudgetPolicy";
@@ -63,6 +64,9 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
 
     @GuardedBy("this")
     Map<Integer, Set<ModelLoadRequest>> mUidsToRequests = new HashMap<>();
+
+    @GuardedBy("this")
+    final Map<Integer, Long> mTimeUidLastCompleted = new HashMap<>();
 
     class BinderDeathRecipientUid implements IBinder.DeathRecipient {
         private final int callingUid;
@@ -156,10 +160,25 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             int neededBudget = getModelWeightFromSizeOrThrow(request.getSize()) - availableBudget;
             Set<ModelLoadRequest> requestsToCancelOrUnload = new HashSet<>();
             for (int uid : getLeastImportantUids()) {
+                if (uid == callingUid) {
+                    continue;
+                }
+                int callingImportance = getUidImportance(callingUid);
+                int otherUidImportance = getUidImportance(uid);
+
                 // Don't attempt to unload models more important than the caller.
-                if (getUidImportance(uid) <= getUidImportance(callingUid)) {
+                if (callingImportance > otherUidImportance) {
                     break;
                 }
+
+                // If the importances are equal, give preference to the UID that has not completed a
+                // task recently.
+                if (callingImportance == otherUidImportance
+                        && mTimeUidLastCompleted.getOrDefault(callingUid, 0L)
+                                >= mTimeUidLastCompleted.getOrDefault(uid, 0L)) {
+                    continue;
+                }
+
                 for (ModelLoadRequest r : uidsToRequests.getOrDefault(uid, new HashSet<>())) {
                     // If model is already loaded, unload it. Otherwise, cancel the request.
                     requestsToCancelOrUnload.add(r);
@@ -183,11 +202,10 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                         Log.w(TAG, "No callback for request " + r);
                         continue;
                     }
-                    IModelLoadCallback cb = modelRequestInfo.getCallback();
                     synchronized (this) {
                         if (modelRequestInfo.getState()
                                 == ModelLoadRequestInfo.RequestState.LOADED) {
-                            cb.onRequestUnloadModel(r);
+                            requestUnloadModel(r);
                         } else {
                             Log.w(TAG, "Cancelling pending model r: " + r);
                             handleModelLoadCancelled(r);
@@ -292,11 +310,83 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     }
 
     @Override
-    void handleWorkEnded(WorkInfo workInfo, @EndReason byte reason) {}
+    void handleWorkEnded(WorkInfo workInfo, @EndReason byte reason) {
+        if (reason != EndReason.COMPLETED) {
+            Log.d(TAG, "Work ended with reason: " + reason);
+            return;
+        }
+
+        synchronized (this) {
+            int completedUid = workInfo.originalUid;
+            Log.d(TAG, "Work completed for UID: " + completedUid);
+            mTimeUidLastCompleted.put(completedUid, SystemClock.elapsedRealtime());
+            Set<Integer> equalPriorityUids =
+                    mUidImportanceMap.entrySet().stream()
+                            .filter(
+                                    e ->
+                                            e.getKey() != completedUid
+                                                    && e.getValue()
+                                                            .equals(getUidImportance(completedUid)))
+                            .map(Map.Entry::getKey)
+                            .collect(Collectors.toSet());
+            Set<ModelLoadRequest> equalPriorityRequests =
+                    mUidsToRequests.entrySet().stream()
+                            .filter(e -> equalPriorityUids.contains(e.getKey()))
+                            .map(Map.Entry::getValue)
+                            .flatMap(Set::stream)
+                            .collect(Collectors.toSet());
+
+            // If any equal priority requests are not loaded, ask the current UID to unload all of
+            // its requests.
+            boolean shouldUnload = false;
+            for (ModelLoadRequest request : equalPriorityRequests) {
+                if (mRequests.get(request) != null
+                        && mRequests.get(request).getState()
+                                == ModelLoadRequestInfo.RequestState.PENDING) {
+                    shouldUnload = true;
+                    break;
+                }
+            }
+
+            // TODO(b/462125442) We should try and determine the last model that completed and only
+            // unload that, instead of unloading all models for the UID.
+            if (shouldUnload) {
+                mRequests.values().stream()
+                        .filter(
+                                info ->
+                                        info.getUid() == completedUid
+                                                && info.getState()
+                                                        == ModelLoadRequestInfo.RequestState.LOADED)
+                        .forEach(info -> requestUnloadModel(info.getRequest()));
+            }
+        }
+    }
 
     private synchronized void evaluateAndLoadHighestPriorityModels() {
         Log.d(TAG, "Evaluating highest priority models");
-        List<Integer> sortedUids = getMostImportantUids();
+        List<Integer> sortedUids =
+                getMostImportantUids(
+                        // Compares entries of UID -> Importance
+                        new Comparator<Map.Entry<Integer, Integer>>() {
+
+                            @Override
+                            public int compare(
+                                    Map.Entry<Integer, Integer> o1,
+                                    Map.Entry<Integer, Integer> o2) {
+                                if (Objects.equals(o1.getValue(), o2.getValue())) {
+                                    // Lower timestamp is older, and should get higher priority.
+                                    return -1
+                                            * Long.compare(
+                                                    mTimeUidLastCompleted.getOrDefault(
+                                                            o1.getKey(), 0L),
+                                                    mTimeUidLastCompleted.getOrDefault(
+                                                            o2.getKey(), 0L));
+                                }
+
+                                // Higher importance is lower priority.
+                                return o1.getValue().compareTo(o2.getValue());
+                            }
+                        });
 
         // Determine ideal requests that should be loaded.
         int budget = mMaxBudget;
@@ -352,24 +442,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         }
 
         // Call unload
-        try {
-            for (ModelLoadRequest request : requestsToUnload) {
-                ModelLoadRequestInfo modelLoadRequestInfo = mRequests.get(request);
-                if (modelLoadRequestInfo != null) {
-                    IModelLoadCallback cb = modelLoadRequestInfo.getCallback();
-                    if (cb != null) {
-                        Log.d(
-                                TAG,
-                                "Requesting unload request="
-                                        + request
-                                        + ", ModelRequestInfo="
-                                        + modelLoadRequestInfo);
-                        cb.onRequestUnloadModel(request);
-                    }
-                }
-            }
-        } catch (RemoteException e) {
-            Log.e(TAG, "Failed to call onRequestUnloadModel", e);
+        for (ModelLoadRequest request : requestsToUnload) {
+            requestUnloadModel(request);
         }
 
         // Call cancel
@@ -411,6 +485,30 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             }
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to call onCanLoadModel", e);
+        }
+    }
+
+    private void requestUnloadModel(ModelLoadRequest request) {
+        ModelLoadRequestInfo modelLoadRequestInfo = mRequests.get(request);
+        if (modelLoadRequestInfo != null) {
+            IModelLoadCallback cb = modelLoadRequestInfo.getCallback();
+            if (cb != null) {
+                Log.d(
+                        TAG,
+                        "Requesting unload request="
+                                + request
+                                + ", ModelRequestInfo="
+                                + modelLoadRequestInfo);
+                try {
+                    cb.onRequestUnloadModel(request);
+                } catch (RemoteException e) {
+                    Log.e(TAG, "Failed to call onRequestUnloadModel", e);
+                }
+            } else {
+                Log.w(TAG, "No callback for request " + request);
+            }
+        } else {
+            Log.w(TAG, "No model info for request=" + request);
         }
     }
 

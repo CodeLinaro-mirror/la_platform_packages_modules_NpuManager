@@ -33,6 +33,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeTrue;
 
 import android.app.ActivityManager;
 import android.app.UiAutomation;
@@ -91,6 +92,10 @@ public class CtsNpuModelManagerTest {
     private static final String ACTION_APP_RESUMED = "android.npumanager.testapp.APP_RESUMED";
     private static final String EXTRA_PACKAGE_NAME = "packagename";
     private static final long APP_START_TIMEOUT_MS = 5000;
+
+    // TODO(b/462125442) Update this to common path when available, this only exists on cuttlefish.
+    private static final String RUN_INFERENCE_TOOL_PATH =
+            "/apex/com.android.hardware.npu/bin/run-test-inference";
 
     UiDevice mDevice;
     UiAutomation mUiAutomation;
@@ -331,6 +336,95 @@ public class CtsNpuModelManagerTest {
         assertTrue(cancelLatch.await(5, TimeUnit.SECONDS));
     }
 
+    /**
+     * This tests that the first model gets unloaded after it finishes its task, and the second
+     * model gets loaded.
+     */
+    @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
+    public void testNpuModelManager_turnTakingPolicy_equalImportances() throws Exception {
+        assumeTrue(checkRunInferenceExists());
+
+        mContext.getSystemService(NpuManager.class).setPolicy(NPU_MODEL_POLICY_TURN_TAKING, null);
+
+        // First load background model
+        CountDownLatch backgroundLatch = new CountDownLatch(1);
+        CountDownLatch unloadLatch = new CountDownLatch(1);
+        CountDownLatch cancelLatch = new CountDownLatch(1);
+        TestModelLoadRequest backgroundRequest =
+                new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        ITestModelLoadRequestCallback backgroundCallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    private ITestModelLoadStatusListener mListener;
+
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener)
+                            throws RemoteException {
+                        if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            mListener = listener;
+                            mListener.notifyModelLoaded(request);
+                            backgroundLatch.countDown();
+                        }
+                    }
+
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {
+                        try {
+                            unloadLatch.countDown();
+                            mListener.notifyModelUnloaded(request);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {}
+                };
+        mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
+        assertTrue(backgroundLatch.await(5, TimeUnit.SECONDS));
+
+        CountDownLatch notPrioritizedLatch = new CountDownLatch(1);
+        CountDownLatch canLoadLatch = new CountDownLatch(1);
+        TestModelLoadRequest foregroundRequest =
+                new TestModelLoadRequest(2, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        ITestModelLoadRequestCallback foregroundCallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener)
+                            throws RemoteException {
+                        if (status == NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED) {
+                            notPrioritizedLatch.countDown();
+                        } else if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            canLoadLatch.countDown();
+                            listener.notifyModelLoaded(request);
+                        }
+                    }
+
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {}
+
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {
+                        if (status == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
+                            assertEquals(foregroundRequest.id, request.id);
+                            cancelLatch.countDown();
+                        }
+                    }
+                };
+
+        // Second app should not be allowed to load.
+        mForegroundNpuManager.requestLoadModel(foregroundRequest, foregroundCallback);
+        assertTrue(notPrioritizedLatch.await(5, TimeUnit.SECONDS));
+
+        // After the inference completes, the first app should unload and second should be able to
+        // load.
+        runTestInference(BACKGROUND_PACKAGE_NAME);
+        assertTrue(unloadLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(canLoadLatch.await(5, TimeUnit.SECONDS));
+    }
+
     @Test
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testNpuModelManager_budgetPolicy() throws Exception {
@@ -444,7 +538,6 @@ public class CtsNpuModelManagerTest {
                             fgCanLoadLatch.countDown();
                             // Not calling listener.notifyModel so that this budget
                             // is still considered "requested" and not loaded
-
                         }
                     }
 
@@ -647,6 +740,24 @@ public class CtsNpuModelManagerTest {
     private boolean killApp(String packageName, long timeoutMs) throws IOException {
         mUiAutomation.executeShellCommand("am force-stop " + packageName);
         return waitForAppDeath(packageName, timeoutMs);
+    }
+
+    private boolean checkRunInferenceExists() throws IOException {
+        final ParcelFileDescriptor stdout =
+                mUiAutomation.executeShellCommand("ls " + RUN_INFERENCE_TOOL_PATH);
+        try (InputStream inputStream = new ParcelFileDescriptor.AutoCloseInputStream(stdout)) {
+            return inputStream.readAllBytes().length > 0;
+        }
+    }
+
+    private void runTestInference(String packageName) throws PackageManager.NameNotFoundException {
+        // TODO (b/462125442) --original-uid might not be supported on all devices, so call this
+        // inside the test apps instead of here.
+        mUiAutomation.executeShellCommand(
+                RUN_INFERENCE_TOOL_PATH
+                        + " --job-priority=1"
+                        + " --original-uid="
+                        + getUid(packageName));
     }
 
     private int getUid(String packageName) throws PackageManager.NameNotFoundException {
