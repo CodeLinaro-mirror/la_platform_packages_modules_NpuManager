@@ -25,6 +25,9 @@ import static android.npumanager.NpuManager.NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
 
+import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.content.Context;
 import android.hardware.npu.EndReason;
 import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
@@ -37,6 +40,7 @@ import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
 
+import java.io.PrintWriter;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -363,6 +367,28 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                                                 && info.getState()
                                                         == ModelLoadRequestInfo.RequestState.LOADED)
                         .forEach(info -> requestUnloadModel(info.getRequest()));
+            }
+        }
+    }
+
+    @Override
+    void dump(@NonNull Context context, @NonNull PrintWriter pw, @Nullable String[] args) {
+        pw.println("Policy: budget");
+        dumpInternal(context, pw, args);
+    }
+
+    protected void dumpInternal(
+            @NonNull Context context, @NonNull PrintWriter pw, @Nullable String[] args) {
+        synchronized (this) {
+            pw.println("    Max: " + mMaxBudget);
+            pw.println("    Requests:");
+            for (ModelLoadRequestInfo info : mRequests.values()) {
+                pw.println(
+                        String.format(
+                                "        %d [%s]: %s",
+                                info.getUid(),
+                                DumpUtils.getPackageNameForUid(context, info.getUid()),
+                                info.getState()));
             }
         }
     }

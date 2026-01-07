@@ -40,7 +40,9 @@ import com.android.internal.content.PackageMonitor;
 import com.android.internal.util.ArrayUtils;
 import com.android.npumanager.Flags;
 
+import java.io.PrintWriter;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -113,6 +115,24 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
 
         NpuPackageMonitor npuPackageMonitor = new NpuPackageMonitor();
         npuPackageMonitor.register(mContext, UserHandle.ALL, mContext.getMainThreadHandler());
+    }
+
+    public void dump(@NonNull PrintWriter pw, @Nullable String[] args) {
+        pw.println("Priorities:");
+        synchronized (mLock) {
+            mPriorities.values().stream()
+                    .sorted(Comparator.comparingInt(a -> a.getSchedulingConfig().priority))
+                    .forEach(
+                            info -> {
+                                pw.println(
+                                        String.format(
+                                                "    %d [%s] %d",
+                                                info.getUid(),
+                                                DumpUtils.getPackageNameForUid(
+                                                        mContext, info.getUid()),
+                                                info.getSchedulingConfig().priority));
+                            });
+        }
     }
 
     public void handleWorkRequested(WorkInfo workInfo) {

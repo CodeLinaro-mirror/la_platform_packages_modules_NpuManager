@@ -20,6 +20,9 @@ import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCEL
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW;
 
+import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.content.Context;
 import android.hardware.npu.EndReason;
 import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
@@ -28,6 +31,7 @@ import android.os.RemoteException;
 
 import com.android.internal.annotations.GuardedBy;
 
+import java.io.PrintWriter;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -95,4 +99,9 @@ class StatusQuoModelLoadingPolicy extends NpuModelLoadingPolicy {
     }
 
     void handleWorkEnded(WorkInfo workInfo, @EndReason byte reason) {}
+
+    @Override
+    void dump(@NonNull Context context, @NonNull PrintWriter pw, @Nullable String[] args) {
+        pw.println("Policy: statusquo");
+    }
 }

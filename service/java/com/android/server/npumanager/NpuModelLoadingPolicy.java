@@ -18,11 +18,16 @@ package com.android.server.npumanager;
 
 import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_GONE;
 
+import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.content.Context;
 import android.hardware.npu.EndReason;
 import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
 
+import java.io.FileDescriptor;
+import java.io.PrintWriter;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -76,6 +81,18 @@ abstract class NpuModelLoadingPolicy {
      * @param reason The reason why the work ended.
      */
     abstract void handleWorkEnded(WorkInfo workInfo, @EndReason byte reason);
+
+    /**
+     * Called when doing a dump (via dumpsys) of the service. Generally this should print
+     * information related to the policy (configuration, etc).
+     *
+     * <p>See {@link android.os.IBinder#dump(FileDescriptor, String[])}
+     *
+     * @param context the Context from the service being dumped
+     * @param pw a PrintWriter for easily printing text into the dump
+     * @param args a String[] of args, may be null or empty
+     */
+    abstract void dump(@NonNull Context context, @NonNull PrintWriter pw, @Nullable String[] args);
 
     /**
      * Inform the policy of a change in UID importance.
