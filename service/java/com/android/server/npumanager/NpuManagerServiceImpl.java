@@ -16,6 +16,7 @@
 
 package com.android.server.npumanager;
 
+import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_BUDGET;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_STATUS_QUO;
@@ -49,6 +50,7 @@ import android.os.IBinder;
 import android.os.Process;
 import android.os.RemoteException;
 import android.os.ServiceManager;
+import android.os.Trace;
 import android.os.UserHandle;
 import android.util.Log;
 
@@ -111,8 +113,10 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
             throw new IllegalArgumentException("Context must not be null");
         }
         mContext = context;
+        Trace.beginSection("NpuManagerServiceImpl#constructor");
         if (!Flags.npumanagerEnabled()) {
             mNpuModelLoadingPolicy = new StatusQuoModelLoadingPolicy(mUidImportanceMap);
+            Trace.endSection();
             return;
         }
         PackageManager pm = context.getPackageManager();
@@ -144,6 +148,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
         mNpuModelLoadingPolicy = new StatusQuoModelLoadingPolicy(mUidImportanceMap);
 
         if (processes == null) {
+            Trace.endSection();
             return;
         }
 
@@ -158,6 +163,14 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
                 configs.add(config);
             }
         }
+        // Add a config for ROOT
+        SchedulingConfig config = new SchedulingConfig();
+        config.priority = IMPORTANCE_FOREGROUND;
+        config.uid = Process.ROOT_UID;
+        config.hasDirectAccess = true;
+        config.canAttributeOtherUid = true;
+        configs.add(config);
+
         ensureHalService();
         try {
             if (mScheduling != null) {
@@ -171,6 +184,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
 
         NpuPackageMonitor npuPackageMonitor = new NpuPackageMonitor();
         npuPackageMonitor.register(context, UserHandle.ALL, context.getMainThreadHandler());
+        Trace.endSection();
     }
 
     private void updateUidListener() {
@@ -263,6 +277,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
 
     @Override
     public void onUidImportance(int uid, int importance) {
+        Trace.beginSection("NpuManagerServiceImpl#onUidImportance");
         Log.d(
                 TAG,
                 "onUidImportance: uid="
@@ -289,6 +304,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to update scheduling configs", e);
         }
+        Trace.endSection();
     }
 
     private boolean canUidAttributeOtherUid(int uid) {
@@ -318,16 +334,20 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
     @Override
     @PermissionManuallyEnforced
     public void cancelModelLoad(ModelLoadRequest request) {
+        Trace.beginSection("NpuManagerServiceImpl#cancelModelLoad");
         Log.d(TAG, "cancelModelLoad: request=" + request);
         mNpuModelLoadingPolicy.handleModelLoadCancelled(request);
+        Trace.endSection();
     }
 
     /** Inform the system that the model for the request has been loaded. */
     @Override
     @PermissionManuallyEnforced
     public void notifyModelLoaded(ModelLoadRequest request) {
+        Trace.beginSection("NpuManagerServiceImpl#notifyModelLoaded");
         Log.d(TAG, "notifyModelLoaded: request=" + request);
         mNpuModelLoadingPolicy.handleModelLoaded(request);
+        Trace.endSection();
     }
 
     /**
@@ -337,14 +357,17 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
     @Override
     @PermissionManuallyEnforced
     public void notifyModelUnloaded(ModelLoadRequest request) {
+        Trace.beginSection("NpuManagerServiceImpl#notifyModelUnloaded");
         Log.d(TAG, "notifyModelUnloaded: request=" + request);
         mNpuModelLoadingPolicy.handleModelUnloaded(request);
+        Trace.endSection();
     }
 
     /** Set the model loading policy. */
     @Override
     @PermissionManuallyEnforced
     public void setPolicy(int policy, Bundle policyParams) {
+        Trace.beginSection("NpuManagerServiceImpl#setPolicy");
         Log.d(TAG, "setPolicy: policy=" + policy);
         enforceModelManagerPermissions(mContext);
         mNpuModelLoadingPolicy =
@@ -354,7 +377,11 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub
                     case NPU_MODEL_POLICY_TURN_TAKING ->
                             new TurnTakingModelLoadingPolicy(mUidImportanceMap);
                     case NPU_MODEL_POLICY_BUDGET -> new BudgetModelLoadingPolicy(mUidImportanceMap);
-                    default -> throw new IllegalArgumentException("Unsupported policy: " + policy);
+                    default -> {
+                        Trace.endSection();
+                        throw new IllegalArgumentException("Unsupported policy: " + policy);
+                    }
                 };
+        Trace.endSection();
     }
 }
