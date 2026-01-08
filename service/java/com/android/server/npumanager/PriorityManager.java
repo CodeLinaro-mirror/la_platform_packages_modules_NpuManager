@@ -139,7 +139,7 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
         maybePrioritizeLegacyApp(workInfo.originalUid >= 0 ? workInfo.originalUid : workInfo.uid);
     }
 
-    public Map<Integer, Integer> createUidImportanceMap() {
+    public Map<Integer, Integer> createUidPriorityMap() {
         synchronized (mLock) {
             HashMap<Integer, Integer> result = new HashMap<>();
 

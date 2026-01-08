@@ -53,8 +53,6 @@ import com.android.npumanager.Flags;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
 
 @SystemService(Context.NPU_SERVICE)
@@ -123,7 +121,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
         mContext = Objects.requireNonNull(context);
 
         mPriorityManager = new PriorityManager(mContext);
-        mNpuModelLoadingPolicy = new StatusQuoModelLoadingPolicy(new HashMap<>());
+        mNpuModelLoadingPolicy = new StatusQuoModelLoadingPolicy(mPriorityManager);
 
         if (!Flags.npumanagerEnabled()) {
             return;
@@ -134,12 +132,11 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
         mPriorityManager.addPriorityChangeListener(
                 (uid, priority) -> {
                     synchronized (mLock) {
-                        mNpuModelLoadingPolicy.onUidImportance(uid, priority);
+                        mNpuModelLoadingPolicy.onUidPriority(uid, priority);
                     }
                 });
         mPriorityManager.start();
-        mNpuModelLoadingPolicy =
-                new StatusQuoModelLoadingPolicy(mPriorityManager.createUidImportanceMap());
+        mNpuModelLoadingPolicy = new StatusQuoModelLoadingPolicy(mPriorityManager);
         Trace.endSection();
     }
 
@@ -251,15 +248,14 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
         Log.d(TAG, "setPolicy: policy=" + policy);
         enforceModelManagerPermissions(mContext);
         synchronized (mLock) {
-            Map<Integer, Integer> uidImportanceMap = mPriorityManager.createUidImportanceMap();
             mNpuModelLoadingPolicy =
                     switch (policy) {
                         case NPU_MODEL_POLICY_STATUS_QUO ->
-                                new StatusQuoModelLoadingPolicy(uidImportanceMap);
+                                new StatusQuoModelLoadingPolicy(mPriorityManager);
                         case NPU_MODEL_POLICY_TURN_TAKING ->
-                                new TurnTakingModelLoadingPolicy(uidImportanceMap);
+                                new TurnTakingModelLoadingPolicy(mPriorityManager);
                         case NPU_MODEL_POLICY_BUDGET ->
-                                new BudgetModelLoadingPolicy(uidImportanceMap);
+                                new BudgetModelLoadingPolicy(mPriorityManager);
                         default ->
                                 throw new IllegalArgumentException("Unsupported policy: " + policy);
                     };

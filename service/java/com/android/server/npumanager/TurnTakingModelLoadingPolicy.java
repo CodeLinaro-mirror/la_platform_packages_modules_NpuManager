@@ -32,9 +32,9 @@ import java.util.Map;
  * importance (lower value) will preempt lower importance UIDs.
  */
 class TurnTakingModelLoadingPolicy extends BudgetModelLoadingPolicy {
-    TurnTakingModelLoadingPolicy(Map<Integer, Integer> initialUidImportances) {
+    TurnTakingModelLoadingPolicy(PriorityManager priorityManager) {
         super(
-                initialUidImportances,
+                priorityManager,
                 Map.of(
                         NPU_MODEL_SIZE_LESS_THAN_1GB, 1,
                         NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB, 1,

@@ -96,8 +96,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         }
     }
 
-    BudgetModelLoadingPolicy(Map<Integer, Integer> initialUidImportances) {
-        super(initialUidImportances);
+    BudgetModelLoadingPolicy(PriorityManager priorityManager) {
+        super(priorityManager);
         mModelSizeWeights =
                 Map.of(
                         NPU_MODEL_SIZE_LESS_THAN_1GB, 1,
@@ -109,10 +109,10 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     }
 
     BudgetModelLoadingPolicy(
-            Map<Integer, Integer> initialUidImportances,
+            PriorityManager priorityManager,
             Map<Integer, Integer> modelSizeWeights,
             int maxBudget) {
-        super(initialUidImportances);
+        super(priorityManager);
         mModelSizeWeights = modelSizeWeights;
         mMaxBudget = maxBudget;
     }
@@ -167,8 +167,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                 if (uid == callingUid) {
                     continue;
                 }
-                int callingImportance = getUidImportance(callingUid);
-                int otherUidImportance = getUidImportance(uid);
+                int callingImportance = mPriorityManager.getPriorityForUid(callingUid);
+                int otherUidImportance = mPriorityManager.getPriorityForUid(uid);
 
                 // Don't attempt to unload models more important than the caller.
                 if (callingImportance > otherUidImportance) {
@@ -312,7 +312,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     }
 
     @Override
-    void onUidImportanceInternal(int uid, int importance) {
+    void onUidPriorityInternal(int uid, int priority) {
         synchronized (this) {
             evaluateAndLoadHighestPriorityModels();
         }
@@ -325,17 +325,22 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             return;
         }
 
+        Map<Integer, Integer> priorityMap = mPriorityManager.createUidPriorityMap();
+
         synchronized (this) {
             int completedUid = workInfo.originalUid;
             Log.d(TAG, "Work completed for UID: " + completedUid);
             mTimeUidLastCompleted.put(completedUid, SystemClock.elapsedRealtime());
             Set<Integer> equalPriorityUids =
-                    mUidImportanceMap.entrySet().stream()
+                    priorityMap.entrySet().stream()
                             .filter(
                                     e ->
                                             e.getKey() != completedUid
                                                     && e.getValue()
-                                                            .equals(getUidImportance(completedUid)))
+                                                            .equals(
+                                                                    mPriorityManager
+                                                                            .getPriorityForUid(
+                                                                                    completedUid)))
                             .map(Map.Entry::getKey)
                             .collect(Collectors.toSet());
             Set<ModelLoadRequest> equalPriorityRequests =
