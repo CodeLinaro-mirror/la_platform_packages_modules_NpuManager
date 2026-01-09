@@ -32,6 +32,7 @@ import android.hardware.npu.EndReason;
 import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
+import android.os.BaseBundle;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.RemoteException;
@@ -58,6 +59,15 @@ import java.util.stream.Collectors;
  */
 class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     private static final String TAG = "NpuBudgetPolicy";
+
+    /** Key for maxBudget in policy params bundle. */
+    public static final String KEY_MAX_BUDGET = "maxBudget";
+
+    private static final Map<Integer, Integer> DEFAULT_MODEL_WEIGHTS =
+            Map.of(
+                    NPU_MODEL_SIZE_LESS_THAN_1GB, 1,
+                    NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB, 2,
+                    NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
 
     private final Map<Integer, Integer> mModelSizeWeights;
 
@@ -96,16 +106,20 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         }
     }
 
-    BudgetModelLoadingPolicy(PriorityManager priorityManager) {
+    BudgetModelLoadingPolicy(PriorityManager priorityManager, @Nullable BaseBundle policyParams) {
         super(priorityManager);
-        mModelSizeWeights =
-                Map.of(
-                        NPU_MODEL_SIZE_LESS_THAN_1GB, 1,
-                        NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB, 2,
-                        NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
-
-        // By default budget one large model
-        mMaxBudget = mModelSizeWeights.getOrDefault(NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
+        mModelSizeWeights = DEFAULT_MODEL_WEIGHTS;
+        if (policyParams != null && policyParams.containsKey(KEY_MAX_BUDGET)) {
+            int maxBudget = policyParams.getInt(KEY_MAX_BUDGET);
+            if (maxBudget <= 0) {
+                throw new IllegalArgumentException(
+                        "Maximum budget must be a positive, non-zero integer.");
+            }
+            mMaxBudget = maxBudget;
+        } else {
+            // By default budget one large model
+            mMaxBudget = mModelSizeWeights.getOrDefault(NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
+        }
     }
 
     BudgetModelLoadingPolicy(

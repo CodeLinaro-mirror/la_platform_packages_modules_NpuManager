@@ -30,6 +30,7 @@ import static android.npumanager.NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -49,6 +50,7 @@ import android.npumanager.testing.ITestModelLoadRequestCallback;
 import android.npumanager.testing.ITestModelLoadStatusListener;
 import android.npumanager.testing.TestModelLoadRequest;
 import android.npumanager.testing.TestNpuManagerClient;
+import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 import android.os.SystemClock;
@@ -75,13 +77,16 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @RunWith(AndroidJUnit4.class)
 public class CtsNpuModelManagerTest {
     private static final String TAG = "CtsNpuModelManagerTest";
 
+    public static final String KEY_MAX_BUDGET = "maxBudget";
     private static final String FOREGROUND_PACKAGE_NAME = "android.npumanager.testapp.A";
     private static final String BACKGROUND_PACKAGE_NAME = "android.npumanager.testapp.B";
     private static final String TEST_APP_MAIN_ACTIVITY_NAME =
@@ -667,6 +672,146 @@ public class CtsNpuModelManagerTest {
         assertTrue(fgCanLoadLatch.await(5, TimeUnit.SECONDS));
 
         assertTrue(bgCancelledLatch.await(5, TimeUnit.SECONDS));
+    }
+
+    /** Tests that a large model cannot be loaded if the budget is set too small. */
+    @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
+    public void testNpuModelManager_budgetPolicy_insufficientBudget() throws Exception {
+        Bundle policyParams = new Bundle();
+        policyParams.putInt(KEY_MAX_BUDGET, 3); // Less than the weight of a large model (4)
+        mContext.getSystemService(NpuManager.class)
+                .setPolicy(NPU_MODEL_POLICY_BUDGET, policyParams);
+
+        CountDownLatch notPrioritizedLatch = new CountDownLatch(1);
+        AtomicBoolean canLoadNowReceived = new AtomicBoolean(false);
+
+        TestModelLoadRequest request =
+                new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        ITestModelLoadRequestCallback callback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    public void onCanLoadModel(
+                            TestModelLoadRequest req,
+                            int status,
+                            ITestModelLoadStatusListener listener) {
+                        if (status == NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED) {
+                            notPrioritizedLatch.countDown();
+                        } else if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            canLoadNowReceived.set(true);
+                        }
+                    }
+
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {}
+
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {}
+                };
+
+        mForegroundNpuManager.requestLoadModel(request, callback);
+
+        assertTrue(
+                "Did not receive NOT_PRIORITIZED within timeout",
+                notPrioritizedLatch.await(5, TimeUnit.SECONDS));
+        assertFalse("Received CAN_LOAD_NOW unexpectedly", canLoadNowReceived.get());
+    }
+
+    /** Tests that two large models can be loaded simultaneously when the budget is sufficient. */
+    @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
+    public void testNpuModelManager_budgetPolicy_sufficientBudgetForTwo() throws Exception {
+        Bundle policyParams = new Bundle();
+        policyParams.putInt(KEY_MAX_BUDGET, 8); // Sufficient for two large models (4 + 4)
+        mContext.getSystemService(NpuManager.class)
+                .setPolicy(NPU_MODEL_POLICY_BUDGET, policyParams);
+
+        waitForAppResume(FOREGROUND_PACKAGE_NAME);
+        assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+
+        CountDownLatch foregroundCanLoadLatch = new CountDownLatch(1);
+        AtomicBoolean foregroundUnloadRequested = new AtomicBoolean(false);
+        TestModelLoadRequest foregroundRequest =
+                new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        ITestModelLoadRequestCallback appACallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    private ITestModelLoadStatusListener mListener;
+
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener)
+                            throws RemoteException {
+                        if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            mListener = listener;
+                            mListener.notifyModelLoaded(request);
+                            foregroundCanLoadLatch.countDown();
+                        }
+                    }
+
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {
+                        foregroundUnloadRequested.set(true);
+                    }
+
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {}
+                };
+
+        CountDownLatch backgroundCanLoadLatch = new CountDownLatch(1);
+        AtomicBoolean backgroundUnloadRequested = new AtomicBoolean(false);
+        TestModelLoadRequest appBRequest =
+                new TestModelLoadRequest(2, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        ITestModelLoadRequestCallback appBCallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    private ITestModelLoadStatusListener mListener;
+
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener)
+                            throws RemoteException {
+                        if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            mListener = listener;
+                            mListener.notifyModelLoaded(request);
+                            backgroundCanLoadLatch.countDown();
+                        }
+                    }
+
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {
+                        backgroundUnloadRequested.set(true);
+                    }
+
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {}
+                };
+
+        // Load App A model
+        mForegroundNpuManager.requestLoadModel(foregroundRequest, appACallback);
+        // Load App B model
+        mBackgroundNpuManager.requestLoadModel(appBRequest, appBCallback);
+
+        assertTrue(
+                "App A did not receive CAN_LOAD_NOW",
+                foregroundCanLoadLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(
+                "App B did not receive CAN_LOAD_NOW",
+                backgroundCanLoadLatch.await(5, TimeUnit.SECONDS));
+
+        assertFalse(
+                "App A model unload was requested unexpectedly", foregroundUnloadRequested.get());
+        assertFalse(
+                "App B model unload was requested unexpectedly", backgroundUnloadRequested.get());
+    }
+
+    /** Tests that an invalid max budget value will throw an exception. */
+    @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
+    public void testNpuModelManager_budgetPolicy_illegalMaxBudget() {
+        Bundle policyParams = new Bundle();
+        policyParams.putInt(KEY_MAX_BUDGET, 0);
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        Objects.requireNonNull(mContext.getSystemService(NpuManager.class))
+                                .setPolicy(NPU_MODEL_POLICY_BUDGET, policyParams));
     }
 
     private void runKillForegroundAppTestWithPolicy(int policy) throws Exception {
