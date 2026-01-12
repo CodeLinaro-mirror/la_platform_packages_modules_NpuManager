@@ -29,12 +29,11 @@ import android.content.Context;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.os.Trace;
-
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
 /**
- * NpuManager provides access to NPU related services.
+ * NpuManager provides access to NPU (Neural Processing Unit) related services.
  *
  * @hide
  */
