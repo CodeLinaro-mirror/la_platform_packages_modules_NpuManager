@@ -44,6 +44,10 @@ public class MetricsLogger {
                 convertEndReason(reason));
     }
 
+    public void logAppBlocked(int uid) {
+        NpuStatsLog.write(NpuStatsLog.NPU_APP_BLOCKED, uid);
+    }
+
     private int convertStartReason(@StartReason byte reason) {
         return switch (reason) {
             case StartReason.INITIAL -> NpuStatsLog.NPU_WORK_EVENT_OCCURRED__REASON__INITIAL;
