@@ -29,7 +29,6 @@ import android.npumanager.NpuManager.NpuModelSize;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.os.Process;
-
 import java.util.Objects;
 
 /**
@@ -130,7 +129,7 @@ public class ModelLoadRequest implements Parcelable {
         /**
          * Sets the size of the model to load.
          *
-         * @param size The size of the model to load.
+         * @param size The size of the model to load. Must be one of {@link NpuModelSize}.
          * @return The builder.
          */
         public Builder setSize(@NpuModelSize int size) {
@@ -141,7 +140,7 @@ public class ModelLoadRequest implements Parcelable {
         /**
          * Sets the priority of the model to load.
          *
-         * @param priority The priority of the model to load.
+         * @param priority The priority of the model to load. Must be one of {@link NpuModelPriority}.
          * @return The builder.
          */
         public Builder setPriority(int priority) {
@@ -150,7 +149,8 @@ public class ModelLoadRequest implements Parcelable {
         }
 
         /**
-         * Constructor for the builder which sets the id for the request.
+         * Constructor for the builder which sets the id for the request. Ids should be unique for
+         * each request.
          *
          * @param id The id of the model to load.
          */
