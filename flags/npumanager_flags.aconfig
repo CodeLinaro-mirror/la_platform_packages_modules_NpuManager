@@ -8,3 +8,11 @@ flag {
     description: "This flag controls whether NpuManager is enabled"
     bug: "416283422"
 }
+
+flag {
+    name: "npumanager_block_missing_feature"
+    is_exported: false
+    namespace: "machine_learning"
+    description: "This flag controls whether blocking Android 17 apps that are missing the NPU feature is enabled or not"
+    bug: "416283422"
+}
