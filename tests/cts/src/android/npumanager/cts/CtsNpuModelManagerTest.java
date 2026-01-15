@@ -219,11 +219,10 @@ public class CtsNpuModelManagerTest {
         npuModelManager.setPolicy(NPU_MODEL_POLICY_STATUS_QUO, null);
         CountDownLatch latch = new CountDownLatch(1);
         CountDownLatch completeLatch = new CountDownLatch(1);
-        ModelLoadRequest request =
-                new ModelLoadRequest.Builder(54)
-                        .setSize(NPU_MODEL_SIZE_LESS_THAN_1GB)
-                        .setPriority(NPU_MODEL_PRIORITY_NORMAL)
-                        .build();
+        ModelLoadRequest request = new ModelLoadRequest();
+        request.id = 54;
+        request.size = NPU_MODEL_SIZE_LESS_THAN_1GB;
+        request.priority = NPU_MODEL_PRIORITY_NORMAL;
         ModelLoadRequestCallback callback =
                 new ModelLoadRequestCallback() {
                     public void onCanLoadModel(
