@@ -2,19 +2,16 @@
 package android.npumanager {
 
   @FlaggedApi("com.android.npumanager.npumanager_enabled") public class ModelLoadRequest implements android.os.Parcelable {
+    ctor public ModelLoadRequest();
     method public int describeContents();
-    method @IntRange(from=java.lang.Integer.MIN_VALUE, to=java.lang.Integer.MAX_VALUE) public int getId();
-    method @IntRange(from=android.npumanager.NpuManager.NPU_MODEL_PRIORITY_NORMAL, to=android.npumanager.NpuManager.NPU_MODEL_PRIORITY_BACKGROUND) public int getPriority();
-    method @IntRange(from=android.npumanager.NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB, to=android.npumanager.NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G) public int getSize();
-    method public void writeToParcel(android.os.Parcel, int);
-    field @NonNull public static final android.os.Parcelable.Creator<android.npumanager.ModelLoadRequest> CREATOR;
-  }
-
-  public static class ModelLoadRequest.Builder {
-    ctor public ModelLoadRequest.Builder(int);
-    method public android.npumanager.ModelLoadRequest build();
-    method public android.npumanager.ModelLoadRequest.Builder setPriority(int);
-    method public android.npumanager.ModelLoadRequest.Builder setSize(int);
+    method public final void readFromParcel(android.os.Parcel);
+    method public final void writeToParcel(android.os.Parcel, int);
+    field public static final android.os.Parcelable.Creator<android.npumanager.ModelLoadRequest> CREATOR;
+    field public static final int PRIORITY_BACKGROUND = 1000; // 0x3e8
+    field public static final int PRIORITY_NORMAL = 0; // 0x0
+    field @IntRange(from=java.lang.Integer.MIN_VALUE, to=java.lang.Integer.MAX_VALUE) public int id;
+    field @IntRange(from=android.npumanager.ModelLoadRequest.PRIORITY_NORMAL, to=android.npumanager.ModelLoadRequest.PRIORITY_BACKGROUND) public int priority;
+    field @android.npumanager.NpuModelSize @IntRange(from=android.npumanager.NpuModelSize.LESS_THAN_1GB, to=android.npumanager.NpuModelSize.GREATER_THAN_2G) public int size;
   }
 
   @FlaggedApi("com.android.npumanager.npumanager_enabled") public interface ModelLoadRequestCallback {
@@ -45,6 +42,12 @@ package android.npumanager {
   public class NpuManager.ModelLoadStatusListener {
     method public void notifyModelLoaded(android.npumanager.ModelLoadRequest) throws android.os.RemoteException;
     method public void notifyModelUnloaded(android.npumanager.ModelLoadRequest) throws android.os.RemoteException;
+  }
+
+  @FlaggedApi("com.android.npumanager.npumanager_enabled") @IntDef({android.npumanager.NpuModelSize.LESS_THAN_1GB, android.npumanager.NpuModelSize.BETWEEN_1GB_AND_2GB, android.npumanager.NpuModelSize.GREATER_THAN_2G}) @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.SOURCE) public @interface NpuModelSize {
+    field public static final int BETWEEN_1GB_AND_2GB = 1; // 0x1
+    field public static final int GREATER_THAN_2G = 2; // 0x2
+    field public static final int LESS_THAN_1GB = 0; // 0x0
   }
 
 }
