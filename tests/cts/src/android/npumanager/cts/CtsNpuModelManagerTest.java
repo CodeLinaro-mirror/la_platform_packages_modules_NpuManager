@@ -18,6 +18,7 @@ package android.npumanager.cts;
 
 import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE;
 import static android.content.Intent.FLAG_ACTIVITY_NEW_TASK;
+import static android.npumanager.NpuManager.KEY_MAX_BUDGET;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED;
@@ -86,7 +87,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class CtsNpuModelManagerTest {
     private static final String TAG = "CtsNpuModelManagerTest";
 
-    public static final String KEY_MAX_BUDGET = "maxBudget";
     private static final String FOREGROUND_PACKAGE_NAME = "android.npumanager.testapp.A";
     private static final String BACKGROUND_PACKAGE_NAME = "android.npumanager.testapp.B";
     private static final String TEST_APP_MAIN_ACTIVITY_NAME =

@@ -16,6 +16,7 @@
 
 package com.android.server.npumanager;
 
+import static android.npumanager.NpuManager.KEY_MAX_BUDGET;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW;
@@ -59,9 +60,6 @@ import java.util.stream.Collectors;
  */
 class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     private static final String TAG = "NpuBudgetPolicy";
-
-    /** Key for maxBudget in policy params bundle. */
-    public static final String KEY_MAX_BUDGET = "maxBudget";
 
     private static final Map<Integer, Integer> DEFAULT_MODEL_WEIGHTS =
             Map.of(

@@ -154,6 +154,14 @@ public final class NpuManager {
     @SystemApi public static final int NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE = 4;
 
     /**
+     * Key for specifying the maximum budget within {@link #NPU_MODEL_POLICY_BUDGET}. This key is
+     * used when configuring policies via {@link #setPolicy(int, Bundle)}.
+     *
+     * @hide
+     */
+    @SystemApi public static final String KEY_MAX_BUDGET = "maxBudget";
+
+    /**
      * A small model that is one that is less than 1GB in size.
      *
      * @hide
