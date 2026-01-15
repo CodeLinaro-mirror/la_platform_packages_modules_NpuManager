@@ -58,6 +58,7 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
 
     @NonNull private final Context mContext;
     private final Object mLock = new Object();
+    private final MetricsLogger mMetricsLogger = new MetricsLogger();
 
     @GuardedBy("mLock")
     private @Nullable IScheduling mScheduling;
@@ -183,8 +184,6 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
         schedulingConfig.canAttributeOtherUid = canAttributeOtherUid(packageInfo);
         schedulingConfig.hasDirectAccess = true;
 
-        boolean isStatic = false;
-
         if (packageInfo.applicationInfo.targetSdkVersion >= Build.VERSION_CODES.CINNAMON_BUN
                 && !doesPackageUseNpuFeature(packageInfo)) {
             if (Flags.npumanagerBlockMissingFeature()) {
@@ -194,8 +193,8 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
                                 + " does not declare "
                                 + Context.FEATURE_FLAGS_SERVICE
                                 + ". NPU access is blocked.");
+                schedulingConfig.hasDirectAccess = false;
             } else {
-                // TODO(b/474056678) log metrics when we block an app
                 Log.w(
                         TAG,
                         packageInfo.packageName
@@ -205,7 +204,7 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
             }
         }
 
-        return new PriorityInfo(schedulingConfig, isStatic);
+        return new PriorityInfo(schedulingConfig, false);
     }
 
     private boolean canAttributeOtherUid(PackageInfo packageInfo) {
@@ -305,6 +304,7 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
                             + packageInfo.packageName
                             + " because it does not declare "
                             + PackageManager.FEATURE_NEURAL_PROCESSING_UNIT);
+            mMetricsLogger.logAppBlocked(uid);
         }
 
         synchronized (mLock) {
