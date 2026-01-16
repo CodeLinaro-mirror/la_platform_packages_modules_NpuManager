@@ -16,15 +16,18 @@
 
 package com.android.server.npumanager;
 
-import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_GONE;
 
+import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.content.Context;
 import android.hardware.npu.EndReason;
 import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
 
+import java.io.FileDescriptor;
+import java.io.PrintWriter;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -33,11 +36,10 @@ import java.util.stream.Collectors;
 abstract class NpuModelLoadingPolicy {
     private static final String TAG = "NpuModelLoadingPolicy";
 
-    // TODO(b/462709308) should lock this.
-    protected Map<Integer, Integer> mUidImportanceMap;
+    protected PriorityManager mPriorityManager;
 
-    NpuModelLoadingPolicy(Map<Integer, Integer> initialUidImportances) {
-        mUidImportanceMap = new HashMap<>(initialUidImportances);
+    NpuModelLoadingPolicy(PriorityManager priorityManager) {
+        mPriorityManager = priorityManager;
     }
 
     /**
@@ -78,28 +80,35 @@ abstract class NpuModelLoadingPolicy {
     abstract void handleWorkEnded(WorkInfo workInfo, @EndReason byte reason);
 
     /**
-     * Inform the policy of a change in UID importance.
+     * Called when doing a dump (via dumpsys) of the service. Generally this should print
+     * information related to the policy (configuration, etc).
      *
-     * @param uid The uid that has changed importance.
-     * @param importance The new importance value.
+     * <p>See {@link android.os.IBinder#dump(FileDescriptor, String[])}
+     *
+     * @param context the Context from the service being dumped
+     * @param pw a PrintWriter for easily printing text into the dump
+     * @param args a String[] of args, may be null or empty
      */
-    final void onUidImportance(int uid, int importance) {
-        mUidImportanceMap.put(uid, importance);
-        onUidImportanceInternal(uid, importance);
+    abstract void dump(@NonNull Context context, @NonNull PrintWriter pw, @Nullable String[] args);
+
+    /**
+     * Inform the policy of a change in UID priority.
+     *
+     * @param uid The uid that has changed priority.
+     * @param priority The new priority value.
+     */
+    final void onUidPriority(int uid, int priority) {
+        onUidPriorityInternal(uid, priority);
     }
 
     /**
-     * Called when a UID importance changes. Should be overridden by subclasses to execute any
-     * policy specific logic when UID priority changes.
+     * Called when a UID priority changes. Should be overridden by subclasses to execute any policy
+     * specific logic when UID priority changes.
      *
-     * @param uid The uid that has changed importance.
-     * @param importance The new importance value.
+     * @param uid The uid that has changed priority.
+     * @param priority The new priority value.
      */
-    void onUidImportanceInternal(int uid, int importance) {}
-
-    protected int getUidImportance(int uid) {
-        return mUidImportanceMap.getOrDefault(uid, IMPORTANCE_GONE);
-    }
+    void onUidPriorityInternal(int uid, int priority) {}
 
     protected List<Integer> getMostImportantUids() {
         return getMostImportantUids(Map.Entry.comparingByValue());
@@ -107,7 +116,8 @@ abstract class NpuModelLoadingPolicy {
 
     protected List<Integer> getMostImportantUids(
             Comparator<Map.Entry<Integer, Integer>> comparator) {
-        return mUidImportanceMap.entrySet().stream()
+        Map<Integer, Integer> priorities = mPriorityManager.createUidPriorityMap();
+        return priorities.entrySet().stream()
                 .sorted(comparator)
                 .map(Map.Entry::getKey)
                 .collect(Collectors.toList());

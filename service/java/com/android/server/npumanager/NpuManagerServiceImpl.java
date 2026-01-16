@@ -39,6 +39,7 @@ import android.npumanager.ModelLoadRequest;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.Trace;
@@ -46,10 +47,12 @@ import android.os.UserHandle;
 import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
+import com.android.internal.util.DumpUtils;
+import com.android.modules.utils.BasicShellCommandHandler;
 import com.android.npumanager.Flags;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.io.FileDescriptor;
+import java.io.PrintWriter;
 import java.util.Objects;
 
 @SystemService(Context.NPU_SERVICE)
@@ -118,7 +121,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
         mContext = Objects.requireNonNull(context);
 
         mPriorityManager = new PriorityManager(mContext);
-        mNpuModelLoadingPolicy = new StatusQuoModelLoadingPolicy(new HashMap<>());
+        mNpuModelLoadingPolicy = new StatusQuoModelLoadingPolicy(mPriorityManager);
 
         if (!Flags.npumanagerEnabled()) {
             return;
@@ -129,12 +132,11 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
         mPriorityManager.addPriorityChangeListener(
                 (uid, priority) -> {
                     synchronized (mLock) {
-                        mNpuModelLoadingPolicy.onUidImportance(uid, priority);
+                        mNpuModelLoadingPolicy.onUidPriority(uid, priority);
                     }
                 });
         mPriorityManager.start();
-        mNpuModelLoadingPolicy =
-                new StatusQuoModelLoadingPolicy(mPriorityManager.createUidImportanceMap());
+        mNpuModelLoadingPolicy = new StatusQuoModelLoadingPolicy(mPriorityManager);
         Trace.endSection();
     }
 
@@ -241,24 +243,83 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
     /** Set the model loading policy. */
     @Override
     @PermissionManuallyEnforced
-    public void setPolicy(int policy, Bundle policyParams) {
+    public void setPolicy(int policy, @Nullable Bundle policyParams) {
         Trace.beginSection("NpuManagerServiceImpl#setPolicy");
         Log.d(TAG, "setPolicy: policy=" + policy);
         enforceModelManagerPermissions(mContext);
         synchronized (mLock) {
-            Map<Integer, Integer> uidImportanceMap = mPriorityManager.createUidImportanceMap();
             mNpuModelLoadingPolicy =
                     switch (policy) {
                         case NPU_MODEL_POLICY_STATUS_QUO ->
-                                new StatusQuoModelLoadingPolicy(uidImportanceMap);
+                                new StatusQuoModelLoadingPolicy(mPriorityManager);
                         case NPU_MODEL_POLICY_TURN_TAKING ->
-                                new TurnTakingModelLoadingPolicy(uidImportanceMap);
+                                new TurnTakingModelLoadingPolicy(mPriorityManager);
                         case NPU_MODEL_POLICY_BUDGET ->
-                                new BudgetModelLoadingPolicy(uidImportanceMap);
+                                new BudgetModelLoadingPolicy(mPriorityManager);
                         default ->
                                 throw new IllegalArgumentException("Unsupported policy: " + policy);
                     };
         }
         Trace.endSection();
+    }
+
+    @Override
+    @PermissionManuallyEnforced
+    public int handleShellCommand(
+            @NonNull ParcelFileDescriptor in,
+            @NonNull ParcelFileDescriptor out,
+            @NonNull ParcelFileDescriptor err,
+            @NonNull String[] args) {
+        return new BasicShellCommandHandler() {
+            @Override
+            public int onCommand(String cmd) {
+                switch (cmd != null ? cmd : "") {
+                    case "set-status-quo-policy" -> setPolicy(NPU_MODEL_POLICY_STATUS_QUO, null);
+                    case "set-budget-policy" -> setPolicy(NPU_MODEL_POLICY_BUDGET, null);
+                    case "set-turn-taking-policy" -> setPolicy(NPU_MODEL_POLICY_TURN_TAKING, null);
+                    case "info" -> dumpInternal(getOutPrintWriter(), null);
+                    default -> {
+                        handleDefaultCommands(cmd);
+                        return 1;
+                    }
+                }
+                return 0;
+            }
+
+            @Override
+            public void onHelp() {
+                getOutPrintWriter()
+                        .println(
+                                "usage: cmd npu set-status-quo-policy: use the status quo policy\n"
+                                    + "usage: cmd npu set-budget-policy: use the budget policy\n"
+                                    + "usage: cmd npu set-turn-taking-policy: use the turn-taking"
+                                    + " policy\n"
+                                    + "usage: cmd npu info: Shows the current policy, requests,"
+                                    + " priorities, etc.");
+            }
+        }.exec(
+                NpuManagerServiceImpl.this,
+                in.getFileDescriptor(),
+                out.getFileDescriptor(),
+                err.getFileDescriptor(),
+                args);
+    }
+
+    @Override
+    @PermissionManuallyEnforced
+    protected void dump(
+            @NonNull FileDescriptor fd, @NonNull PrintWriter pw, @Nullable String[] args) {
+        dumpInternal(pw, args);
+    }
+
+    private void dumpInternal(PrintWriter pw, @Nullable String[] args) {
+        if (!DumpUtils.checkDumpPermission(mContext, TAG, pw)) return;
+
+        synchronized (mLock) {
+            mNpuModelLoadingPolicy.dump(mContext, pw, args);
+
+            pw.println();
+            mPriorityManager.dump(pw, args);
+        }
     }
 }
