@@ -16,7 +16,6 @@
 
 package android.npumanager;
 
-
 import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
@@ -26,7 +25,7 @@ import android.annotation.RequiresPermission;
 import android.annotation.SystemApi;
 import android.annotation.SystemService;
 import android.content.Context;
-import android.os.Bundle;
+import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.os.Trace;
 
@@ -173,14 +172,16 @@ public final class NpuManager {
      *
      * @hide
      */
-    @SystemApi public static final int NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB = NpuModelSize.BETWEEN_1GB_AND_2GB;
+    @SystemApi
+    public static final int NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB = NpuModelSize.BETWEEN_1GB_AND_2GB;
 
     /**
      * A large model that is one that is greater than 2GB in size.
      *
      * @hide
      */
-    @SystemApi public static final int NPU_MODEL_SIZE_GREATER_THAN_2G = NpuModelSize.GREATER_THAN_2G;
+    @SystemApi
+    public static final int NPU_MODEL_SIZE_GREATER_THAN_2G = NpuModelSize.GREATER_THAN_2G;
 
     /**
      * Normal priority models are loaded at a higher priority than background priority models.
@@ -194,7 +195,8 @@ public final class NpuManager {
      *
      * @hide
      */
-    @SystemApi public static final int NPU_MODEL_PRIORITY_BACKGROUND = ModelLoadRequest.PRIORITY_BACKGROUND;
+    @SystemApi
+    public static final int NPU_MODEL_PRIORITY_BACKGROUND = ModelLoadRequest.PRIORITY_BACKGROUND;
 
     /** @hide */
     @SystemApi
@@ -336,7 +338,8 @@ public final class NpuManager {
      */
     @SystemApi
     @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API)
-    public void setPolicy(@NpuModelPolicy int policy, Bundle policyParams) throws RemoteException {
+    public void setPolicy(@NpuModelPolicy int policy, PersistableBundle policyParams)
+            throws RemoteException {
         try {
             mNpuManagerService.setPolicy(policy, policyParams);
         } catch (RemoteException e) {

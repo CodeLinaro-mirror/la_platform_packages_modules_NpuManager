@@ -27,8 +27,8 @@ import android.npumanager.testing.ITestModelLoadStatusListener;
 import android.npumanager.testing.ITestNpuManagerService;
 import android.npumanager.testing.TestModelLoadRequest;
 import android.os.Binder;
-import android.os.Bundle;
 import android.os.IBinder;
+import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.util.Log;
 
@@ -174,7 +174,8 @@ public class NpuManagerTestService extends Service {
 
                 @RequiresNoPermission
                 @Override
-                public void setPolicy(int policy, Bundle policyParams) throws RemoteException {
+                public void setPolicy(int policy, PersistableBundle policyParams)
+                        throws RemoteException {
                     Log.d(TAG, "setPolicy: policy=" + policy);
                     if (mNpuManager == null) {
                         Log.e(TAG, "NpuManager not available");
