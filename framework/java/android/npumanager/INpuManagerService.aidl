@@ -18,7 +18,7 @@ package android.npumanager;
 
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
-import android.os.Bundle;
+import android.os.PersistableBundle;
 
 /**
  * Binder interface to communicate with the NpuManagerService.
@@ -34,5 +34,5 @@ interface INpuManagerService {
     @PermissionManuallyEnforced
     void notifyModelUnloaded(in ModelLoadRequest request);
     @PermissionManuallyEnforced
-    void setPolicy(int policy, in Bundle policyParams);
+    void setPolicy(int policy, in PersistableBundle policyParams);
 }
