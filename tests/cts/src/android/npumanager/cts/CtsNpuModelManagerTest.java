@@ -51,8 +51,8 @@ import android.npumanager.testing.ITestModelLoadRequestCallback;
 import android.npumanager.testing.ITestModelLoadStatusListener;
 import android.npumanager.testing.TestModelLoadRequest;
 import android.npumanager.testing.TestNpuManagerClient;
-import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
+import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.platform.test.annotations.RequiresFlagsEnabled;
@@ -677,7 +677,7 @@ public class CtsNpuModelManagerTest {
     @Test
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testNpuModelManager_budgetPolicy_insufficientBudget() throws Exception {
-        Bundle policyParams = new Bundle();
+        PersistableBundle policyParams = new PersistableBundle();
         policyParams.putInt(KEY_MAX_BUDGET, 3); // Less than the weight of a large model (4)
         mContext.getSystemService(NpuManager.class)
                 .setPolicy(NPU_MODEL_POLICY_BUDGET, policyParams);
@@ -718,7 +718,7 @@ public class CtsNpuModelManagerTest {
     @Test
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testNpuModelManager_budgetPolicy_sufficientBudgetForTwo() throws Exception {
-        Bundle policyParams = new Bundle();
+        PersistableBundle policyParams = new PersistableBundle();
         policyParams.putInt(KEY_MAX_BUDGET, 8); // Sufficient for two large models (4 + 4)
         mContext.getSystemService(NpuManager.class)
                 .setPolicy(NPU_MODEL_POLICY_BUDGET, policyParams);
@@ -804,7 +804,7 @@ public class CtsNpuModelManagerTest {
     @Test
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testNpuModelManager_budgetPolicy_illegalMaxBudget() {
-        Bundle policyParams = new Bundle();
+        PersistableBundle policyParams = new PersistableBundle();
         policyParams.putInt(KEY_MAX_BUDGET, 0);
         assertThrows(
                 IllegalArgumentException.class,

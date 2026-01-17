@@ -18,7 +18,7 @@ package android.npumanager.testing;
 
 import android.npumanager.testing.ITestModelLoadRequestCallback;
 import android.npumanager.testing.TestModelLoadRequest;
-import android.os.Bundle;
+import android.os.PersistableBundle;
 
 /**
  * Binder interface to communicate with the NpuManager for testing.
@@ -27,6 +27,6 @@ import android.os.Bundle;
 oneway interface ITestNpuManagerService {
     void requestLoadModel(in TestModelLoadRequest request, in ITestModelLoadRequestCallback callback);
     void cancelLoadModel(in TestModelLoadRequest request);
-    void setPolicy(int policy, in Bundle policyParams);
+    void setPolicy(int policy, in PersistableBundle policyParams);
     void reset();
 }
