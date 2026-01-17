@@ -20,6 +20,11 @@ import static android.npumanager.NpuManager.NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
 
+import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.content.Context;
+
+import java.io.PrintWriter;
 import java.util.Map;
 
 /**
@@ -27,13 +32,19 @@ import java.util.Map;
  * importance (lower value) will preempt lower importance UIDs.
  */
 class TurnTakingModelLoadingPolicy extends BudgetModelLoadingPolicy {
-    TurnTakingModelLoadingPolicy(Map<Integer, Integer> initialUidImportances) {
+    TurnTakingModelLoadingPolicy(PriorityManager priorityManager) {
         super(
-                initialUidImportances,
+                priorityManager,
                 Map.of(
                         NPU_MODEL_SIZE_LESS_THAN_1GB, 1,
                         NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB, 1,
                         NPU_MODEL_SIZE_GREATER_THAN_2G, 1),
                 1);
+    }
+
+    @Override
+    void dump(@NonNull Context context, @NonNull PrintWriter pw, @Nullable String[] args) {
+        pw.println("Policy: turntaking");
+        dumpInternal(context, pw, args);
     }
 }

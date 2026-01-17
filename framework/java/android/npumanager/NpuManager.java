@@ -34,7 +34,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
 /**
- * NpuManager provides access to NPU related services.
+ * NpuManager provides access to NPU (Neural Processing Unit) related services.
  *
  * @hide
  */
@@ -79,7 +79,7 @@ public final class NpuManager {
 
         /**
          * The model request has completed either successfully or due to cancellation and there will
-         * be no further statys updates to the request.
+         * be no further status updates to the request.
          *
          * @param request The model load request that has completed.
          * @hide
@@ -266,7 +266,8 @@ public final class NpuManager {
     }
 
     /**
-     * Check if the model of the specified size can be loaded.
+     * Check if the model of the specified size can be loaded. A request object can only be passed
+     * to requestLoadModel once. The callback object can be reused for multiple requests.
      *
      * @param request The model load request.
      * @param callback The callback to be called when it is advisable to load the model and
@@ -279,7 +280,11 @@ public final class NpuManager {
             ModelLoadRequest request, @NonNull ModelLoadRequestCallback callback)
             throws RemoteException {
         Trace.beginAsyncSection("NpuManager#requestLoadModel", request.getId());
-        mNpuManagerService.canLoadModel(request, getWrapperForCallback(callback));
+        try {
+            mNpuManagerService.canLoadModel(request, getWrapperForCallback(callback));
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
     }
 
     /**
@@ -292,7 +297,11 @@ public final class NpuManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API)
     public void cancelModelLoad(@NonNull ModelLoadRequest request) throws RemoteException {
         Trace.beginAsyncSection("NpuManager#cancelModelLoad", request.getId());
-        mNpuManagerService.cancelModelLoad(request);
+        try {
+            mNpuManagerService.cancelModelLoad(request);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
     }
 
     public class ModelLoadStatusListener {
@@ -308,7 +317,11 @@ public final class NpuManager {
         @SystemApi
         @PermissionManuallyEnforced
         public void notifyModelLoaded(ModelLoadRequest request) throws RemoteException {
-            mNpuManagerService.notifyModelLoaded(request);
+            try {
+                mNpuManagerService.notifyModelLoaded(request);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
         }
 
         /**
@@ -320,7 +333,11 @@ public final class NpuManager {
         @SystemApi
         @PermissionManuallyEnforced
         public void notifyModelUnloaded(ModelLoadRequest request) throws RemoteException {
-            mNpuManagerService.notifyModelUnloaded(request);
+            try {
+                mNpuManagerService.notifyModelUnloaded(request);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
             Trace.endAsyncSection("NpuManager#onRequestUnloadModel", request.getId());
         }
     }
@@ -335,6 +352,10 @@ public final class NpuManager {
     @SystemApi
     @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API)
     public void setPolicy(@NpuModelPolicy int policy, Bundle policyParams) throws RemoteException {
-        mNpuManagerService.setPolicy(policy, policyParams);
+        try {
+            mNpuManagerService.setPolicy(policy, policyParams);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
     }
 }

@@ -593,6 +593,82 @@ public class CtsNpuModelManagerTest {
         runKillForegroundAppTestWithPolicy(NPU_MODEL_POLICY_BUDGET);
     }
 
+    /**
+     * Requests to load model for a background app and a foreground app, where the background app
+     * doesn't finish loading. The background request should be cancelled, and foreground app should
+     * receive CAN_LOAD_NOW.
+     *
+     * @throws Exception Thrown from setting the policy.
+     */
+    @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
+    public void testNpuModelManager_budgetPolicy_backgroundCancelled() throws Exception {
+        NpuManager npuManager = mContext.getSystemService(NpuManager.class);
+        assertNotNull(npuManager);
+
+        npuManager.setPolicy(NPU_MODEL_POLICY_BUDGET, null);
+
+        CountDownLatch fgCanLoadLatch = new CountDownLatch(1);
+        TestModelLoadRequest foregroundRequest =
+                new TestModelLoadRequest(2, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        ITestModelLoadRequestCallback foregroundCallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener) {
+                        if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            fgCanLoadLatch.countDown();
+                        }
+                    }
+
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {}
+
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {}
+                };
+
+        CountDownLatch bgCancelledLatch = new CountDownLatch(1);
+        CountDownLatch bgCanLoadLatch = new CountDownLatch(1);
+        TestModelLoadRequest backgroundRequest =
+                new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        ITestModelLoadRequestCallback backgroundCallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener) {
+                        if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            bgCanLoadLatch.countDown();
+                        }
+                        // Not calling listener.notifyModel so that this budget
+                        // is still considered "pending"
+                    }
+
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {}
+
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {
+                        if (status == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
+                            bgCancelledLatch.countDown();
+                        }
+                    }
+                };
+
+        waitForAppResume(FOREGROUND_PACKAGE_NAME);
+        assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+        assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+
+        mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
+        assertTrue(bgCanLoadLatch.await(5, TimeUnit.SECONDS));
+
+        // Load fg model.
+        mForegroundNpuManager.requestLoadModel(foregroundRequest, foregroundCallback);
+        assertTrue(fgCanLoadLatch.await(5, TimeUnit.SECONDS));
+
+        assertTrue(bgCancelledLatch.await(5, TimeUnit.SECONDS));
+    }
+
     private void runKillForegroundAppTestWithPolicy(int policy) throws Exception {
         mContext.getSystemService(NpuManager.class).setPolicy(policy, null);
 
