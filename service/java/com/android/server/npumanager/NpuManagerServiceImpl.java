@@ -255,7 +255,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
                         case NPU_MODEL_POLICY_TURN_TAKING ->
                                 new TurnTakingModelLoadingPolicy(mPriorityManager);
                         case NPU_MODEL_POLICY_BUDGET ->
-                                new BudgetModelLoadingPolicy(mPriorityManager);
+                                new BudgetModelLoadingPolicy(mPriorityManager, policyParams);
                         default ->
                                 throw new IllegalArgumentException("Unsupported policy: " + policy);
                     };

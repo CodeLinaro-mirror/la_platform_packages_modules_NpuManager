@@ -16,9 +16,29 @@
 
 package android.npumanager;
 
+import android.npumanager.NpuModelSize;
+
 /**
  * A simple Parcelable representing a model load request.
  *
  * @hide
  */
-parcelable ModelLoadRequest;
+@JavaPassthrough(annotation="@android.annotation.SystemApi")
+@JavaPassthrough(annotation="@android.annotation.FlaggedApi(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)")
+parcelable ModelLoadRequest {
+    /** The id of the model load request. */
+    @JavaPassthrough(annotation="@android.annotation.IntRange(from = Integer.MIN_VALUE, to = Integer.MAX_VALUE)")
+    int id;
+
+    /** The size of the model to load. */
+    @JavaPassthrough(annotation="@android.annotation.IntRange(from = NpuModelSize.LESS_THAN_1GB, to = NpuModelSize.GREATER_THAN_2G)")
+    @JavaPassthrough(annotation="@NpuModelSize")
+    NpuModelSize size;
+
+    /** The priority of the model to load. */
+    @JavaPassthrough(annotation="@android.annotation.IntRange(from = PRIORITY_NORMAL, to = PRIORITY_BACKGROUND)")
+    int priority;
+
+    const int PRIORITY_NORMAL = 0;
+    const int PRIORITY_BACKGROUND = 1000;
+}

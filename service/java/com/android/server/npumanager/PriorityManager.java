@@ -58,6 +58,7 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
 
     @NonNull private final Context mContext;
     private final Object mLock = new Object();
+    private final MetricsLogger mMetricsLogger = new MetricsLogger();
 
     @GuardedBy("mLock")
     private @Nullable IScheduling mScheduling;
@@ -183,8 +184,6 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
         schedulingConfig.canAttributeOtherUid = canAttributeOtherUid(packageInfo);
         schedulingConfig.hasDirectAccess = true;
 
-        boolean isStatic = false;
-
         if (packageInfo.applicationInfo.targetSdkVersion >= Build.VERSION_CODES.CINNAMON_BUN
                 && !doesPackageUseNpuFeature(packageInfo)) {
             if (Flags.npumanagerBlockMissingFeature()) {
@@ -194,8 +193,8 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
                                 + " does not declare "
                                 + Context.FEATURE_FLAGS_SERVICE
                                 + ". NPU access is blocked.");
+                schedulingConfig.hasDirectAccess = false;
             } else {
-                // TODO(b/474056678) log metrics when we block an app
                 Log.w(
                         TAG,
                         packageInfo.packageName
@@ -205,7 +204,7 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
             }
         }
 
-        return new PriorityInfo(schedulingConfig, isStatic);
+        return new PriorityInfo(schedulingConfig, false);
     }
 
     private boolean canAttributeOtherUid(PackageInfo packageInfo) {
@@ -248,6 +247,7 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
                                 packageInfo,
                                 getPriorityForImportance(uid, am.getUidImportance(uid)));
                 mPriorities.put(uid, info);
+                Log.d(TAG, "Prioritizing package with NPU feature: " + packageInfo.packageName);
             }
         }
 
@@ -305,11 +305,12 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
                             + packageInfo.packageName
                             + " because it does not declare "
                             + PackageManager.FEATURE_NEURAL_PROCESSING_UNIT);
+            mMetricsLogger.logAppBlocked(uid);
         }
 
         synchronized (mLock) {
             if (mPriorities.put(uid, priorityInfo) == null && !priorityInfo.isStatic()) {
-                Log.d(TAG, "Adding " + packageInfo.packageName + " to list of monitored apps");
+                Log.d(TAG, "Adding legacy package " + packageInfo.packageName);
                 updateUidListener();
             }
 
@@ -369,6 +370,9 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
                         mPriorities.put(
                                 uid,
                                 createPriorityInfo(packageInfo, SchedulingConfig.MAX_PRIORITY));
+                        Log.d(
+                                TAG,
+                                "Adding new package with NPU feature: " + packageInfo.packageName);
                         updateUidListener();
                     }
                 }
@@ -390,6 +394,7 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
         @Override
         public void onPackageModified(String packageName) {
             try {
+                ActivityManager am = mContext.getSystemService(ActivityManager.class);
                 PackageManager pm = mContext.getPackageManager();
                 PackageInfo packageInfo =
                         pm.getPackageInfo(packageName, PackageManager.GET_CONFIGURATIONS);
@@ -397,22 +402,51 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
                     Log.w(TAG, "No application info for " + packageName);
                     return;
                 }
+
                 int uid = packageInfo.applicationInfo.uid;
+                boolean hasFeature = doesPackageUseNpuFeature(packageInfo);
+                boolean isAndroid17 =
+                        packageInfo.applicationInfo.targetSdkVersion
+                                >= Build.VERSION_CODES.CINNAMON_BUN;
 
                 synchronized (mLock) {
-                    int initialPriority = SchedulingConfig.MAX_PRIORITY;
-                    if (mPriorities.containsKey(uid)) {
-                        PriorityInfo currentInfo = mPriorities.get(uid);
-                        if (currentInfo.isStatic()) {
-                            return;
+                    PriorityInfo currentInfo = mPriorities.getOrDefault(uid, null);
+                    if (currentInfo != null) {
+                        SchedulingConfig config = currentInfo.getSchedulingConfig();
+                        if (isAndroid17
+                                && !hasFeature
+                                && config.hasDirectAccess
+                                && Flags.npumanagerBlockMissingFeature()) {
+                            // App used to have the feature, but now doesn't, block it.
+                            config.hasDirectAccess = false;
+                            updateSchedulingConfig(config);
+                            Log.d(
+                                    TAG,
+                                    "Blocking "
+                                            + packageInfo.packageName
+                                            + ", as it no longer has NPU feature");
+                        } else if (isAndroid17 && hasFeature && !config.hasDirectAccess) {
+                            // App didn't have the feature before, and was blocked, but now has the
+                            // feature. Unblock it.
+                            config.hasDirectAccess = true;
+                            updateSchedulingConfig(config);
+                            Log.d(
+                                    TAG,
+                                    "Unblocking package that gained NPU feature: "
+                                            + packageInfo.packageName);
                         }
-
-                        initialPriority = currentInfo.getSchedulingConfig().priority;
-                    }
-
-                    PriorityInfo newInfo = createPriorityInfo(packageInfo, initialPriority);
-                    if (mPriorities.put(uid, newInfo) == null) {
-                        updateUidListener();
+                    } else if (isAndroid17 && hasFeature) {
+                        // App now targets Android 17 and has the feature, but was unknown. Add it.
+                        currentInfo =
+                                createPriorityInfo(
+                                        packageInfo,
+                                        getPriorityForImportance(uid, am.getUidImportance(uid)));
+                        mPriorities.put(uid, currentInfo);
+                        updateSchedulingConfig(currentInfo.getSchedulingConfig());
+                        Log.d(
+                                TAG,
+                                "Adding updated package with NPU feature: "
+                                        + packageInfo.packageName);
                     }
                 }
             } catch (PackageManager.NameNotFoundException e) {
