@@ -25,6 +25,9 @@ import static android.npumanager.NpuManager.NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
 
+import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.content.Context;
 import android.hardware.npu.EndReason;
 import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
@@ -37,6 +40,7 @@ import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
 
+import java.io.PrintWriter;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -92,8 +96,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         }
     }
 
-    BudgetModelLoadingPolicy(Map<Integer, Integer> initialUidImportances) {
-        super(initialUidImportances);
+    BudgetModelLoadingPolicy(PriorityManager priorityManager) {
+        super(priorityManager);
         mModelSizeWeights =
                 Map.of(
                         NPU_MODEL_SIZE_LESS_THAN_1GB, 1,
@@ -105,10 +109,10 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     }
 
     BudgetModelLoadingPolicy(
-            Map<Integer, Integer> initialUidImportances,
+            PriorityManager priorityManager,
             Map<Integer, Integer> modelSizeWeights,
             int maxBudget) {
-        super(initialUidImportances);
+        super(priorityManager);
         mModelSizeWeights = modelSizeWeights;
         mMaxBudget = maxBudget;
     }
@@ -163,8 +167,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                 if (uid == callingUid) {
                     continue;
                 }
-                int callingImportance = getUidImportance(callingUid);
-                int otherUidImportance = getUidImportance(uid);
+                int callingImportance = mPriorityManager.getPriorityForUid(callingUid);
+                int otherUidImportance = mPriorityManager.getPriorityForUid(uid);
 
                 // Don't attempt to unload models more important than the caller.
                 if (callingImportance > otherUidImportance) {
@@ -196,6 +200,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             // If we found the budget, ask the models to unload or cancel the requests, otherwise
             // the new request is not prioritized.
             if (neededBudget <= 0) {
+                boolean unloadingModels = false;
                 for (ModelLoadRequest r : requestsToCancelOrUnload) {
                     ModelLoadRequestInfo modelRequestInfo = mRequests.get(r);
                     if (modelRequestInfo == null || modelRequestInfo.getCallback() == null) {
@@ -206,6 +211,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                         if (modelRequestInfo.getState()
                                 == ModelLoadRequestInfo.RequestState.LOADED) {
                             requestUnloadModel(r);
+                            unloadingModels = true;
                         } else {
                             Log.w(TAG, "Cancelling pending model r: " + r);
                             handleModelLoadCancelled(r);
@@ -213,8 +219,10 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     }
                 }
 
-                Log.d(TAG, "canLoadModel: WAIT_FOR_UNLOAD");
-                callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD);
+                if (unloadingModels) {
+                    Log.d(TAG, "canLoadModel: WAIT_FOR_UNLOAD");
+                    callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD);
+                }
             } else {
                 Log.d(TAG, "canLoadModel: NOT_PRIORITIZED");
                 callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED);
@@ -239,6 +247,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         }
 
         removeRequest(request);
+        evaluateAndLoadHighestPriorityModels();
     }
 
     @Override
@@ -303,7 +312,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     }
 
     @Override
-    void onUidImportanceInternal(int uid, int importance) {
+    void onUidPriorityInternal(int uid, int priority) {
         synchronized (this) {
             evaluateAndLoadHighestPriorityModels();
         }
@@ -316,17 +325,22 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             return;
         }
 
+        Map<Integer, Integer> priorityMap = mPriorityManager.createUidPriorityMap();
+
         synchronized (this) {
             int completedUid = workInfo.originalUid;
             Log.d(TAG, "Work completed for UID: " + completedUid);
             mTimeUidLastCompleted.put(completedUid, SystemClock.elapsedRealtime());
             Set<Integer> equalPriorityUids =
-                    mUidImportanceMap.entrySet().stream()
+                    priorityMap.entrySet().stream()
                             .filter(
                                     e ->
                                             e.getKey() != completedUid
                                                     && e.getValue()
-                                                            .equals(getUidImportance(completedUid)))
+                                                            .equals(
+                                                                    mPriorityManager
+                                                                            .getPriorityForUid(
+                                                                                    completedUid)))
                             .map(Map.Entry::getKey)
                             .collect(Collectors.toSet());
             Set<ModelLoadRequest> equalPriorityRequests =
@@ -358,6 +372,28 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                                                 && info.getState()
                                                         == ModelLoadRequestInfo.RequestState.LOADED)
                         .forEach(info -> requestUnloadModel(info.getRequest()));
+            }
+        }
+    }
+
+    @Override
+    void dump(@NonNull Context context, @NonNull PrintWriter pw, @Nullable String[] args) {
+        pw.println("Policy: budget");
+        dumpInternal(context, pw, args);
+    }
+
+    protected void dumpInternal(
+            @NonNull Context context, @NonNull PrintWriter pw, @Nullable String[] args) {
+        synchronized (this) {
+            pw.println("    Max: " + mMaxBudget);
+            pw.println("    Requests:");
+            for (ModelLoadRequestInfo info : mRequests.values()) {
+                pw.println(
+                        String.format(
+                                "        %d [%s]: %s",
+                                info.getUid(),
+                                DumpUtils.getPackageNameForUid(context, info.getUid()),
+                                info.getState()));
             }
         }
     }
