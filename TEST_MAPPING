@@ -3,5 +3,10 @@
     {
       "name": "CtsNpuManagerTestCases"
     }
+  ],
+  "presubmit": [
+    {
+      "name": "CtsNpuManagerTestCases"
+    }
   ]
 }
