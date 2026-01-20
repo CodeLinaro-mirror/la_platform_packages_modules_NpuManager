@@ -22,7 +22,7 @@ package android.npumanager {
 
   @FlaggedApi("com.android.npumanager.npumanager_enabled") public final class NpuManager {
     method @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API) public void cancelModelLoad(@NonNull android.npumanager.ModelLoadRequest) throws android.os.RemoteException;
-    method @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API) public void requestLoadModel(android.npumanager.ModelLoadRequest, @NonNull android.npumanager.ModelLoadRequestCallback) throws android.os.RemoteException;
+    method @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API) public void requestCanLoadModel(android.npumanager.ModelLoadRequest, @NonNull android.npumanager.ModelLoadRequestCallback, @NonNull java.util.concurrent.Executor) throws android.os.RemoteException;
     method @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API) public void setPolicy(int, android.os.PersistableBundle) throws android.os.RemoteException;
     field public static final String KEY_MAX_BUDGET = "maxBudget";
     field public static final int NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED = 3; // 0x3

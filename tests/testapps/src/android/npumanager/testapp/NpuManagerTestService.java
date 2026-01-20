@@ -31,9 +31,9 @@ import android.os.IBinder;
 import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.util.Log;
-
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.Executors;
 
 public class NpuManagerTestService extends Service {
     private static final String TAG = "NpuManagerTestService";
@@ -149,8 +149,10 @@ public class NpuManagerTestService extends Service {
                     frameworkRequest.id = request.id;
                     frameworkRequest.size = request.size;
                     frameworkRequest.priority = request.priority;
-                    mNpuManager.requestLoadModel(
-                            frameworkRequest, new ModelLoadRequestCallbackWrapper(callback));
+                    mNpuManager.requestCanLoadModel(
+                            frameworkRequest,
+                            new ModelLoadRequestCallbackWrapper(callback),
+                            Executors.newSingleThreadExecutor());
                     mRequests.add(frameworkRequest);
                     Binder.restoreCallingIdentity(identity);
                 }

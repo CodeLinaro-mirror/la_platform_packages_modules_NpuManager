@@ -27,10 +27,10 @@ import android.os.RemoteException;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.TextView;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final String TAG = "NnapiDelegateAppSample";
@@ -150,7 +150,8 @@ public class MainActivity extends Activity {
                         if (npuManager != null) {
                             Log.w(TAG, "Requesting to load the model now");
                             textView.setText("Request loading model now");
-                            npuManager.requestLoadModel(request, callback);
+                            npuManager.requestCanLoadModel(
+                                    request, callback, Executors.newSingleThreadExecutor());
                         }
                     } catch (RemoteException e) {
                         Log.w(TAG, "Remote exception: " + e);

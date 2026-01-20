@@ -28,9 +28,9 @@ import android.content.Context;
 import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.os.Trace;
-
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.util.concurrent.Executor;
 
 /**
  * NpuManager provides access to NPU (Neural Processing Unit) related services.
@@ -45,9 +45,11 @@ public final class NpuManager {
     class ModelLoadCallbackWrapper extends IModelLoadCallback.Stub {
         ModelLoadRequestCallback mCallback;
         ModelLoadStatusListener mListener;
+        Executor mExecutor;
 
-        ModelLoadCallbackWrapper(ModelLoadRequestCallback callback) {
+        ModelLoadCallbackWrapper(ModelLoadRequestCallback callback, Executor executor) {
             mCallback = callback;
+            mExecutor = executor;
             mListener = new ModelLoadStatusListener();
         }
 
@@ -60,7 +62,10 @@ public final class NpuManager {
          */
         @RequiresNoPermission
         public void onCanLoadModel(ModelLoadRequest request, @NpuModelLoadStatus int status) {
-            mCallback.onCanLoadModel(request, status, mListener);
+            mExecutor.execute(
+                    () -> {
+                        mCallback.onCanLoadModel(request, status, mListener);
+                    });
             Trace.endAsyncSection("NpuManager#requestLoadModel", request.id);
         }
 
@@ -72,8 +77,11 @@ public final class NpuManager {
          */
         @RequiresNoPermission
         public void onRequestUnloadModel(ModelLoadRequest request) {
-            Trace.beginAsyncSection("NpuManager#onRequestUnloadModel", request.id);
-            mCallback.onRequestUnloadModel(request);
+            mExecutor.execute(
+                    () -> {
+                        Trace.beginAsyncSection("NpuManager#onRequestUnloadModel", request.id);
+                        mCallback.onRequestUnloadModel(request);
+                    });
         }
 
         /**
@@ -86,7 +94,10 @@ public final class NpuManager {
         @RequiresNoPermission
         public void onModelLoadRequestComplete(
                 ModelLoadRequest request, @NpuModelLoadRequestStatus int status) {
-            mCallback.onModelLoadRequestComplete(request, status);
+            mExecutor.execute(
+                    () -> {
+                        mCallback.onModelLoadRequestComplete(request, status);
+                    });
             if (status == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
                 Trace.endAsyncSection("NpuManager#cancelModelLoad", request.id);
             }
@@ -240,8 +251,9 @@ public final class NpuManager {
 
     private final INpuManagerService mNpuManagerService;
 
-    private ModelLoadCallbackWrapper getWrapperForCallback(ModelLoadRequestCallback callback) {
-        return new ModelLoadCallbackWrapper(callback);
+    private ModelLoadCallbackWrapper getWrapperForCallback(
+            ModelLoadRequestCallback callback, Executor executor) {
+        return new ModelLoadCallbackWrapper(callback, executor);
     }
 
     private Context mContext;
@@ -263,12 +275,14 @@ public final class NpuManager {
      */
     @SystemApi
     @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API)
-    public void requestLoadModel(
-            ModelLoadRequest request, @NonNull ModelLoadRequestCallback callback)
+    public void requestCanLoadModel(
+            ModelLoadRequest request,
+            @NonNull ModelLoadRequestCallback callback,
+            @NonNull Executor executor)
             throws RemoteException {
         Trace.beginAsyncSection("NpuManager#requestLoadModel", request.id);
         try {
-            mNpuManagerService.canLoadModel(request, getWrapperForCallback(callback));
+            mNpuManagerService.canLoadModel(request, getWrapperForCallback(callback, executor));
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
