@@ -25,6 +25,7 @@ import android.npumanager.NpuModelSize;
  */
 @JavaPassthrough(annotation="@android.annotation.SystemApi")
 @JavaPassthrough(annotation="@android.annotation.FlaggedApi(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)")
+@JavaDerive(equals=true, toString=true)
 parcelable ModelLoadRequest {
     /** The id of the model load request. */
     @JavaPassthrough(annotation="@android.annotation.IntRange(from = Integer.MIN_VALUE, to = Integer.MAX_VALUE)")

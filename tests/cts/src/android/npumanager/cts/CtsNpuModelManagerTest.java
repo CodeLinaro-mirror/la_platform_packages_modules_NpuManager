@@ -29,7 +29,6 @@ import static android.npumanager.NpuManager.NPU_MODEL_POLICY_TURN_TAKING;
 import static android.npumanager.NpuManager.NPU_MODEL_PRIORITY_NORMAL;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -59,29 +58,26 @@ import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 import android.util.Log;
-
 import androidx.core.content.ContextCompat;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 import androidx.test.uiautomator.UiDevice;
-
 import com.android.compatibility.common.util.RequiredFeatureRule;
-
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.testng.Assert;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.testng.Assert;
 
 @RunWith(AndroidJUnit4.class)
 public class CtsNpuModelManagerTest {
@@ -250,7 +246,7 @@ public class CtsNpuModelManagerTest {
                     }
                 };
 
-        npuModelManager.requestLoadModel(request, callback);
+        npuModelManager.requestCanLoadModel(request, callback, Executors.newSingleThreadExecutor());
 
         Assert.assertTrue(latch.await(2, TimeUnit.SECONDS));
         npuModelManager.cancelModelLoad(request);
