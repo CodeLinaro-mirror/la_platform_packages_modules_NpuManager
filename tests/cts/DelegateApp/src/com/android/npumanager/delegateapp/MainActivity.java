@@ -27,10 +27,10 @@ import android.os.RemoteException;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.TextView;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final String TAG = "NnapiDelegateAppSample";
@@ -140,18 +140,18 @@ public class MainActivity extends Activity {
             loadModelButton.setEnabled(false);
             unloadModelButton.setEnabled(false);
         }
-        ModelLoadRequest request =
-                new ModelLoadRequest.Builder(54)
-                        .setSize(NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB)
-                        .setPriority(NpuManager.NPU_MODEL_PRIORITY_NORMAL)
-                        .build();
+        ModelLoadRequest request = new ModelLoadRequest();
+        request.id = 54;
+        request.size = NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
+        request.priority = NpuManager.NPU_MODEL_PRIORITY_NORMAL;
         loadModelButton.setOnClickListener(
                 v -> {
                     try {
                         if (npuManager != null) {
                             Log.w(TAG, "Requesting to load the model now");
                             textView.setText("Request loading model now");
-                            npuManager.requestLoadModel(request, callback);
+                            npuManager.requestCanLoadModel(
+                                    request, callback, Executors.newSingleThreadExecutor());
                         }
                     } catch (RemoteException e) {
                         Log.w(TAG, "Remote exception: " + e);

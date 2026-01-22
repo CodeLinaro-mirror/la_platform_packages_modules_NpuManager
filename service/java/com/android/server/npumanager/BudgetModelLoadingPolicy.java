@@ -16,6 +16,7 @@
 
 package com.android.server.npumanager;
 
+import static android.npumanager.NpuManager.KEY_MAX_BUDGET;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW;
@@ -32,6 +33,7 @@ import android.hardware.npu.EndReason;
 import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
+import android.os.BaseBundle;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.RemoteException;
@@ -58,6 +60,12 @@ import java.util.stream.Collectors;
  */
 class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     private static final String TAG = "NpuBudgetPolicy";
+
+    private static final Map<Integer, Integer> DEFAULT_MODEL_WEIGHTS =
+            Map.of(
+                    NPU_MODEL_SIZE_LESS_THAN_1GB, 1,
+                    NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB, 2,
+                    NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
 
     private final Map<Integer, Integer> mModelSizeWeights;
 
@@ -96,16 +104,20 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         }
     }
 
-    BudgetModelLoadingPolicy(PriorityManager priorityManager) {
+    BudgetModelLoadingPolicy(PriorityManager priorityManager, @Nullable BaseBundle policyParams) {
         super(priorityManager);
-        mModelSizeWeights =
-                Map.of(
-                        NPU_MODEL_SIZE_LESS_THAN_1GB, 1,
-                        NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB, 2,
-                        NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
-
-        // By default budget one large model
-        mMaxBudget = mModelSizeWeights.getOrDefault(NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
+        mModelSizeWeights = DEFAULT_MODEL_WEIGHTS;
+        if (policyParams != null && policyParams.containsKey(KEY_MAX_BUDGET)) {
+            int maxBudget = policyParams.getInt(KEY_MAX_BUDGET);
+            if (maxBudget <= 0) {
+                throw new IllegalArgumentException(
+                        "Maximum budget must be a positive, non-zero integer.");
+            }
+            mMaxBudget = maxBudget;
+        } else {
+            // By default budget one large model
+            mMaxBudget = mModelSizeWeights.getOrDefault(NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
+        }
     }
 
     BudgetModelLoadingPolicy(
@@ -141,10 +153,10 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         // processing.
         int requestedAndLoadedBudget =
                 requests.keySet().stream()
-                        .filter(x -> request.getId() != x.getId())
+                        .filter(x -> request.id != x.id)
                         .mapToInt(
                                 modelLoadRequest ->
-                                        getModelWeightFromSizeOrThrow(modelLoadRequest.getSize()))
+                                        getModelWeightFromSizeOrThrow(modelLoadRequest.size))
                         .sum();
         int availableBudget = mMaxBudget - requestedAndLoadedBudget;
 
@@ -153,7 +165,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     .linkToDeath(
                             new BudgetModelLoadingPolicy.BinderDeathRecipientUid(callingUid), 0);
 
-            if (availableBudget >= getModelWeightFromSizeOrThrow(request.getSize())) {
+            if (availableBudget >= getModelWeightFromSizeOrThrow(request.size)) {
                 Log.d(TAG, "canLoadModel: CAN_LOAD_NOW");
                 callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
                 return;
@@ -161,7 +173,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
 
             // Go through all loaded requests in order of least important UIDs, and start unloading
             // models or cancelling requests until we have the necessary budget.
-            int neededBudget = getModelWeightFromSizeOrThrow(request.getSize()) - availableBudget;
+            int neededBudget = getModelWeightFromSizeOrThrow(request.size) - availableBudget;
             Set<ModelLoadRequest> requestsToCancelOrUnload = new HashSet<>();
             for (int uid : getLeastImportantUids()) {
                 if (uid == callingUid) {
@@ -187,7 +199,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     // If model is already loaded, unload it. Otherwise, cancel the request.
                     requestsToCancelOrUnload.add(r);
 
-                    neededBudget -= getModelWeightFromSizeOrThrow(r.getSize());
+                    neededBudget -= getModelWeightFromSizeOrThrow(r.size);
                     if (neededBudget <= 0) {
                         break;
                     }
@@ -300,7 +312,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                 if (uidRequests.remove(request)) {
                     Log.d(
                             TAG,
-                            "Removed request " + request.getId() + " from UID " + entry.getKey());
+                            "Removed request " + request.id + " from UID " + entry.getKey());
                     if (uidRequests.isEmpty()) {
                         iterator.remove();
                         Log.d(TAG, "Removed empty UID " + entry.getKey() + " from mUidsToRequests");
@@ -430,7 +442,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                 new HashSet<>(); // The models that should ideally be loaded;
         for (int uid : sortedUids) {
             for (ModelLoadRequest request : mUidsToRequests.getOrDefault(uid, new HashSet<>())) {
-                int weight = getModelWeightFromSizeOrThrow(request.getSize());
+                int weight = getModelWeightFromSizeOrThrow(request.size);
                 if (weight <= budget) {
                     idealRequests.add(request);
                     budget -= weight;

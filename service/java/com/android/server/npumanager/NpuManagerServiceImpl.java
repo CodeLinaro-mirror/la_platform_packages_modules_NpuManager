@@ -37,9 +37,9 @@ import android.npumanager.IModelLoadCallback;
 import android.npumanager.INpuManagerService;
 import android.npumanager.ModelLoadRequest;
 import android.os.Binder;
-import android.os.Bundle;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
+import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.Trace;
@@ -243,7 +243,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
     /** Set the model loading policy. */
     @Override
     @PermissionManuallyEnforced
-    public void setPolicy(int policy, @Nullable Bundle policyParams) {
+    public void setPolicy(int policy, @Nullable PersistableBundle policyParams) {
         Trace.beginSection("NpuManagerServiceImpl#setPolicy");
         Log.d(TAG, "setPolicy: policy=" + policy);
         enforceModelManagerPermissions(mContext);
@@ -255,7 +255,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
                         case NPU_MODEL_POLICY_TURN_TAKING ->
                                 new TurnTakingModelLoadingPolicy(mPriorityManager);
                         case NPU_MODEL_POLICY_BUDGET ->
-                                new BudgetModelLoadingPolicy(mPriorityManager);
+                                new BudgetModelLoadingPolicy(mPriorityManager, policyParams);
                         default ->
                                 throw new IllegalArgumentException("Unsupported policy: " + policy);
                     };

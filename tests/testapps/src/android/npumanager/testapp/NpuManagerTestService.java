@@ -27,13 +27,13 @@ import android.npumanager.testing.ITestModelLoadStatusListener;
 import android.npumanager.testing.ITestNpuManagerService;
 import android.npumanager.testing.TestModelLoadRequest;
 import android.os.Binder;
-import android.os.Bundle;
 import android.os.IBinder;
+import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.util.Log;
-
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.Executors;
 
 public class NpuManagerTestService extends Service {
     private static final String TAG = "NpuManagerTestService";
@@ -67,8 +67,7 @@ public class NpuManagerTestService extends Service {
 
             try {
                 TestModelLoadRequest testRequest =
-                        new TestModelLoadRequest(
-                                request.getId(), request.getSize(), request.getPriority());
+                        new TestModelLoadRequest(request.id, request.size, request.priority);
                 mCallback.onCanLoadModel(
                         testRequest,
                         status,
@@ -78,11 +77,11 @@ public class NpuManagerTestService extends Service {
                             public void notifyModelLoaded(TestModelLoadRequest req) {
                                 Log.d(TAG, "notifyModelLoaded: request=" + req);
                                 try {
-                                    mListener.notifyModelLoaded(
-                                            new ModelLoadRequest.Builder(req.id)
-                                                    .setSize(req.size)
-                                                    .setPriority(req.priority)
-                                                    .build());
+                                    ModelLoadRequest loadedReq = new ModelLoadRequest();
+                                    loadedReq.id = req.id;
+                                    loadedReq.size = req.size;
+                                    loadedReq.priority = req.priority;
+                                    mListener.notifyModelLoaded(loadedReq);
                                 } catch (RemoteException e) {
                                     Log.e(TAG, "Failed to notify model loaded", e);
                                 }
@@ -93,11 +92,11 @@ public class NpuManagerTestService extends Service {
                             public void notifyModelUnloaded(TestModelLoadRequest req) {
                                 Log.d(TAG, "notifyModelUnloaded: request=" + req);
                                 try {
-                                    mListener.notifyModelUnloaded(
-                                            new ModelLoadRequest.Builder(req.id)
-                                                    .setSize(req.size)
-                                                    .setPriority(req.priority)
-                                                    .build());
+                                    ModelLoadRequest unloadedReq = new ModelLoadRequest();
+                                    unloadedReq.id = req.id;
+                                    unloadedReq.size = req.size;
+                                    unloadedReq.priority = req.priority;
+                                    mListener.notifyModelUnloaded(unloadedReq);
                                 } catch (RemoteException e) {
                                     Log.e(TAG, "Failed to notify model unloaded", e);
                                 }
@@ -113,8 +112,7 @@ public class NpuManagerTestService extends Service {
             Log.d(TAG, "onRequestUnloadModel: request=" + request);
             try {
                 TestModelLoadRequest testRequest =
-                        new TestModelLoadRequest(
-                                request.getId(), request.getSize(), request.getPriority());
+                        new TestModelLoadRequest(request.id, request.size, request.priority);
                 mCallback.onRequestUnloadModel(testRequest);
             } catch (RemoteException e) {
                 Log.e(TAG, "Failed to call onRequestUnloadModel", e);
@@ -126,8 +124,7 @@ public class NpuManagerTestService extends Service {
             Log.d(TAG, "onModelLoadRequestComplete: request=" + request + ", status=" + status);
             try {
                 TestModelLoadRequest testRequest =
-                        new TestModelLoadRequest(
-                                request.getId(), request.getSize(), request.getPriority());
+                        new TestModelLoadRequest(request.id, request.size, request.priority);
                 mCallback.onModelLoadRequestComplete(testRequest, status);
             } catch (RemoteException e) {
                 Log.e(TAG, "Failed to call onModelLoadRequestComplete", e);
@@ -148,13 +145,14 @@ public class NpuManagerTestService extends Service {
                         return;
                     }
                     final long identity = Binder.clearCallingIdentity();
-                    ModelLoadRequest frameworkRequest =
-                            new ModelLoadRequest.Builder(request.id)
-                                    .setSize(request.size)
-                                    .setPriority(request.priority)
-                                    .build();
-                    mNpuManager.requestLoadModel(
-                            frameworkRequest, new ModelLoadRequestCallbackWrapper(callback));
+                    ModelLoadRequest frameworkRequest = new ModelLoadRequest();
+                    frameworkRequest.id = request.id;
+                    frameworkRequest.size = request.size;
+                    frameworkRequest.priority = request.priority;
+                    mNpuManager.requestCanLoadModel(
+                            frameworkRequest,
+                            new ModelLoadRequestCallbackWrapper(callback),
+                            Executors.newSingleThreadExecutor());
                     mRequests.add(frameworkRequest);
                     Binder.restoreCallingIdentity(identity);
                 }
@@ -168,18 +166,18 @@ public class NpuManagerTestService extends Service {
                         return;
                     }
                     final long identity = Binder.clearCallingIdentity();
-                    ModelLoadRequest frameworkRequest =
-                            new ModelLoadRequest.Builder(request.id)
-                                    .setSize(request.size)
-                                    .setPriority(request.priority)
-                                    .build();
+                    ModelLoadRequest frameworkRequest = new ModelLoadRequest();
+                    frameworkRequest.id = request.id;
+                    frameworkRequest.size = request.size;
+                    frameworkRequest.priority = request.priority;
                     mNpuManager.cancelModelLoad(frameworkRequest);
                     Binder.restoreCallingIdentity(identity);
                 }
 
                 @RequiresNoPermission
                 @Override
-                public void setPolicy(int policy, Bundle policyParams) throws RemoteException {
+                public void setPolicy(int policy, PersistableBundle policyParams)
+                        throws RemoteException {
                     Log.d(TAG, "setPolicy: policy=" + policy);
                     if (mNpuManager == null) {
                         Log.e(TAG, "NpuManager not available");

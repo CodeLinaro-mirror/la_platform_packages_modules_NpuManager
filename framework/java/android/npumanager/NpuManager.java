@@ -16,7 +16,6 @@
 
 package android.npumanager;
 
-
 import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
@@ -26,12 +25,12 @@ import android.annotation.RequiresPermission;
 import android.annotation.SystemApi;
 import android.annotation.SystemService;
 import android.content.Context;
-import android.os.Bundle;
+import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.os.Trace;
-
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.util.concurrent.Executor;
 
 /**
  * NpuManager provides access to NPU (Neural Processing Unit) related services.
@@ -46,9 +45,11 @@ public final class NpuManager {
     class ModelLoadCallbackWrapper extends IModelLoadCallback.Stub {
         ModelLoadRequestCallback mCallback;
         ModelLoadStatusListener mListener;
+        Executor mExecutor;
 
-        ModelLoadCallbackWrapper(ModelLoadRequestCallback callback) {
+        ModelLoadCallbackWrapper(ModelLoadRequestCallback callback, Executor executor) {
             mCallback = callback;
+            mExecutor = executor;
             mListener = new ModelLoadStatusListener();
         }
 
@@ -61,8 +62,11 @@ public final class NpuManager {
          */
         @RequiresNoPermission
         public void onCanLoadModel(ModelLoadRequest request, @NpuModelLoadStatus int status) {
-            mCallback.onCanLoadModel(request, status, mListener);
-            Trace.endAsyncSection("NpuManager#requestLoadModel", request.getId());
+            mExecutor.execute(
+                    () -> {
+                        mCallback.onCanLoadModel(request, status, mListener);
+                    });
+            Trace.endAsyncSection("NpuManager#requestLoadModel", request.id);
         }
 
         /**
@@ -73,8 +77,11 @@ public final class NpuManager {
          */
         @RequiresNoPermission
         public void onRequestUnloadModel(ModelLoadRequest request) {
-            Trace.beginAsyncSection("NpuManager#onRequestUnloadModel", request.getId());
-            mCallback.onRequestUnloadModel(request);
+            mExecutor.execute(
+                    () -> {
+                        Trace.beginAsyncSection("NpuManager#onRequestUnloadModel", request.id);
+                        mCallback.onRequestUnloadModel(request);
+                    });
         }
 
         /**
@@ -87,9 +94,12 @@ public final class NpuManager {
         @RequiresNoPermission
         public void onModelLoadRequestComplete(
                 ModelLoadRequest request, @NpuModelLoadRequestStatus int status) {
-            mCallback.onModelLoadRequestComplete(request, status);
+            mExecutor.execute(
+                    () -> {
+                        mCallback.onModelLoadRequestComplete(request, status);
+                    });
             if (status == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
-                Trace.endAsyncSection("NpuManager#cancelModelLoad", request.getId());
+                Trace.endAsyncSection("NpuManager#cancelModelLoad", request.id);
             }
         }
     }
@@ -153,63 +163,51 @@ public final class NpuManager {
      */
     @SystemApi public static final int NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE = 4;
 
-    /** @hide */
-    @SystemApi
-    @IntDef(
-            prefix = {"NPU_MODEL_SIZE_"},
-            value = {
-                NPU_MODEL_SIZE_LESS_THAN_1GB,
-                NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB,
-                NPU_MODEL_SIZE_GREATER_THAN_2G,
-            })
-    @Retention(RetentionPolicy.SOURCE)
-    @interface NpuModelSize {}
+    /**
+     * Key for specifying the maximum budget within {@link #NPU_MODEL_POLICY_BUDGET}. This key is
+     * used when configuring policies via {@link #setPolicy(int, Bundle)}.
+     *
+     * @hide
+     */
+    @SystemApi public static final String KEY_MAX_BUDGET = "maxBudget";
 
     /**
      * A small model that is one that is less than 1GB in size.
      *
      * @hide
      */
-    @SystemApi public static final int NPU_MODEL_SIZE_LESS_THAN_1GB = 0;
+    @SystemApi public static final int NPU_MODEL_SIZE_LESS_THAN_1GB = NpuModelSize.LESS_THAN_1GB;
 
     /**
      * A medium model that is one that is between 1GB and 2GB in size.
      *
      * @hide
      */
-    @SystemApi public static final int NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB = 1;
+    @SystemApi
+    public static final int NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB = NpuModelSize.BETWEEN_1GB_AND_2GB;
 
     /**
      * A large model that is one that is greater than 2GB in size.
      *
      * @hide
      */
-    @SystemApi public static final int NPU_MODEL_SIZE_GREATER_THAN_2G = 2;
-
-    /** @hide */
     @SystemApi
-    @IntDef(
-            prefix = {"NPU_MODEL_PRIORITY_"},
-            value = {
-                NPU_MODEL_PRIORITY_NORMAL,
-                NPU_MODEL_PRIORITY_BACKGROUND,
-            })
-    @Retention(RetentionPolicy.SOURCE)
-    @interface NpuModelPriority {}
+    public static final int NPU_MODEL_SIZE_GREATER_THAN_2G = NpuModelSize.GREATER_THAN_2G;
 
     /**
      * Normal priority models are loaded at a higher priority than background priority models.
      *
      * @hide
      */
-    @SystemApi public static final int NPU_MODEL_PRIORITY_NORMAL = 0;
+    @SystemApi public static final int NPU_MODEL_PRIORITY_NORMAL = ModelLoadRequest.PRIORITY_NORMAL;
 
     /**
      * Background priority models are loaded at a lower priority than normal priority models.
      *
      * @hide
      */
-    @SystemApi public static final int NPU_MODEL_PRIORITY_BACKGROUND = 1000;
+    @SystemApi
+    public static final int NPU_MODEL_PRIORITY_BACKGROUND = ModelLoadRequest.PRIORITY_BACKGROUND;
 
     /** @hide */
     @SystemApi
@@ -253,8 +251,9 @@ public final class NpuManager {
 
     private final INpuManagerService mNpuManagerService;
 
-    private ModelLoadCallbackWrapper getWrapperForCallback(ModelLoadRequestCallback callback) {
-        return new ModelLoadCallbackWrapper(callback);
+    private ModelLoadCallbackWrapper getWrapperForCallback(
+            ModelLoadRequestCallback callback, Executor executor) {
+        return new ModelLoadCallbackWrapper(callback, executor);
     }
 
     private Context mContext;
@@ -276,12 +275,14 @@ public final class NpuManager {
      */
     @SystemApi
     @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API)
-    public void requestLoadModel(
-            ModelLoadRequest request, @NonNull ModelLoadRequestCallback callback)
+    public void requestCanLoadModel(
+            ModelLoadRequest request,
+            @NonNull ModelLoadRequestCallback callback,
+            @NonNull Executor executor)
             throws RemoteException {
-        Trace.beginAsyncSection("NpuManager#requestLoadModel", request.getId());
+        Trace.beginAsyncSection("NpuManager#requestLoadModel", request.id);
         try {
-            mNpuManagerService.canLoadModel(request, getWrapperForCallback(callback));
+            mNpuManagerService.canLoadModel(request, getWrapperForCallback(callback, executor));
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -296,7 +297,7 @@ public final class NpuManager {
     @SystemApi
     @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API)
     public void cancelModelLoad(@NonNull ModelLoadRequest request) throws RemoteException {
-        Trace.beginAsyncSection("NpuManager#cancelModelLoad", request.getId());
+        Trace.beginAsyncSection("NpuManager#cancelModelLoad", request.id);
         try {
             mNpuManagerService.cancelModelLoad(request);
         } catch (RemoteException e) {
@@ -338,7 +339,7 @@ public final class NpuManager {
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }
-            Trace.endAsyncSection("NpuManager#onRequestUnloadModel", request.getId());
+            Trace.endAsyncSection("NpuManager#onRequestUnloadModel", request.id);
         }
     }
 
@@ -351,7 +352,8 @@ public final class NpuManager {
      */
     @SystemApi
     @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API)
-    public void setPolicy(@NpuModelPolicy int policy, Bundle policyParams) throws RemoteException {
+    public void setPolicy(@NpuModelPolicy int policy, PersistableBundle policyParams)
+            throws RemoteException {
         try {
             mNpuManagerService.setPolicy(policy, policyParams);
         } catch (RemoteException e) {
