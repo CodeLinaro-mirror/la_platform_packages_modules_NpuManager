@@ -21,6 +21,7 @@ import static android.content.Intent.FLAG_ACTIVITY_NEW_TASK;
 import static android.npumanager.NpuManager.KEY_MAX_BUDGET;
 import static android.npumanager.NpuManager.KEY_MODEL_SIZE_WEIGHTS;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED;
+import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD;
@@ -85,6 +86,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 @RunWith(AndroidJUnit4.class)
 public class CtsNpuModelManagerTest {
@@ -586,6 +589,80 @@ public class CtsNpuModelManagerTest {
         // Attempt to load bg model. It should return with NOT_PRIORITIZED.
         mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
         assertTrue(bgNotPrioritizedLatch.await(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
+    public void testNpuModelManager_budgetPolicy_multipleModelsWaiting() throws Exception {
+        NpuManager npuManager = mContext.getSystemService(NpuManager.class);
+        assertNotNull(npuManager);
+        npuManager.setPolicy(NPU_MODEL_POLICY_BUDGET, null);
+        waitForAppResume(FOREGROUND_PACKAGE_NAME);
+        assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+
+        AtomicReference<CountDownLatch> canLoadLatch = new AtomicReference<>(new CountDownLatch(1));
+        AtomicReference<CountDownLatch> notPrioritizedLatch =
+                new AtomicReference<>(new CountDownLatch(2));
+        CountDownLatch completeLatch = new CountDownLatch(1);
+        AtomicInteger cancelledCount = new AtomicInteger(0);
+
+        final AtomicReference<ITestModelLoadStatusListener> loadedListener =
+                new AtomicReference<>();
+        final AtomicReference<TestModelLoadRequest> loadedRequest = new AtomicReference<>();
+
+        TestModelLoadRequest request1 =
+                new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        TestModelLoadRequest request2 =
+                new TestModelLoadRequest(2, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        TestModelLoadRequest request3 =
+                new TestModelLoadRequest(3, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+
+        ITestModelLoadRequestCallback callback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener) {
+                        if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            loadedListener.set(listener);
+                            loadedRequest.set(request);
+                            canLoadLatch.get().countDown();
+                        } else if (status == NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED) {
+                            notPrioritizedLatch.get().countDown();
+                        }
+                    }
+
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {}
+
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {
+                        if (status == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
+                            cancelledCount.incrementAndGet();
+                        } else if (status == NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE) {
+                            completeLatch.countDown();
+                        }
+                    }
+                };
+
+        mForegroundNpuManager.requestLoadModel(request1, callback);
+        mForegroundNpuManager.requestLoadModel(request2, callback);
+        mForegroundNpuManager.requestLoadModel(request3, callback);
+
+        assertTrue(canLoadLatch.get().await(5, TimeUnit.SECONDS));
+        assertTrue(notPrioritizedLatch.get().await(5, TimeUnit.SECONDS));
+
+        // Reset latches and simulate model loaded and unloaded
+        canLoadLatch.set(new CountDownLatch(1));
+        assertNotNull(loadedListener.get());
+        assertNotNull(loadedRequest.get());
+        loadedListener.get().notifyModelLoaded(loadedRequest.get());
+        loadedListener.get().notifyModelUnloaded(loadedRequest.get());
+        assertTrue(completeLatch.await(5, TimeUnit.SECONDS));
+
+        // Assert we get another CAN_LOAD_NOW and zero cancellations.
+        assertTrue(canLoadLatch.get().await(5, TimeUnit.SECONDS));
+        SystemClock.sleep(5000);
+        assertEquals(0, cancelledCount.get());
     }
 
     @Test

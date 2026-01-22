@@ -171,7 +171,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                             request,
                             callingUid,
                             callback,
-                            ModelLoadRequestInfo.RequestState.PENDING));
+                            ModelLoadRequestInfo.RequestState.PENDING_LOAD));
             requests = mRequests;
             mUidsToRequests.computeIfAbsent(callingUid, k -> new HashSet<>()).add(request);
             uidsToRequests = mUidsToRequests;
@@ -252,7 +252,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                                 == ModelLoadRequestInfo.RequestState.LOADED) {
                             requestUnloadModel(r);
                             unloadingModels = true;
-                        } else {
+                        } else if (modelRequestInfo.getState()
+                                == ModelLoadRequestInfo.RequestState.PENDING_LOAD) {
                             Log.w(TAG, "Cancelling pending model r: " + r);
                             handleModelLoadCancelled(r);
                         }
@@ -265,10 +266,24 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                 }
             } else {
                 Log.d(TAG, "canLoadModel: NOT_PRIORITIZED");
+                synchronized (this) {
+                    ModelLoadRequestInfo modelLoadRequestInfo = mRequests.get(request);
+                    if (modelLoadRequestInfo != null) {
+                        modelLoadRequestInfo.setState(
+                                ModelLoadRequestInfo.RequestState.NOT_PRIORITIZED);
+                    }
+                }
                 callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED);
             }
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to call onCanLoadModel", e);
+            synchronized (this) {
+                ModelLoadRequestInfo modelLoadRequestInfo = mRequests.get(request);
+                if (modelLoadRequestInfo != null) {
+                    modelLoadRequestInfo.setState(
+                            ModelLoadRequestInfo.RequestState.NOT_PRIORITIZED);
+                }
+            }
         }
     }
 
@@ -396,7 +411,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             for (ModelLoadRequest request : equalPriorityRequests) {
                 if (mRequests.get(request) != null
                         && mRequests.get(request).getState()
-                                == ModelLoadRequestInfo.RequestState.PENDING) {
+                                == ModelLoadRequestInfo.RequestState.PENDING_LOAD) {
                     shouldUnload = true;
                     break;
                 }
@@ -493,23 +508,29 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             if (!idealRequests.contains(request)) {
                 IModelLoadCallback cb = modelLoadRequestInfo.getCallback();
                 if (cb != null) {
-                    if (modelLoadRequestInfo.getState()
-                            == ModelLoadRequestInfo.RequestState.LOADED) {
-                        Log.d(
-                                TAG,
-                                "Requesting unload request="
-                                        + request
-                                        + ", ModelRequestInfo="
-                                        + modelLoadRequestInfo);
-                        requestsToUnload.add(request);
-                    } else {
-                        Log.w(
-                                TAG,
-                                "Cancelling request="
-                                        + request
-                                        + ", ModelRequestInfo="
-                                        + modelLoadRequestInfo);
-                        requestsToCancel.add(request);
+                    switch (modelLoadRequestInfo.getState()) {
+                        case LOADED:
+                            Log.d(
+                                    TAG,
+                                    "Requesting unload request="
+                                            + request
+                                            + ", ModelRequestInfo="
+                                            + modelLoadRequestInfo);
+                            requestsToUnload.add(request);
+                            break;
+                        case PENDING_LOAD:
+                            Log.w(
+                                    TAG,
+                                    "Cancelling request="
+                                            + request
+                                            + ", ModelRequestInfo="
+                                            + modelLoadRequestInfo);
+                            requestsToCancel.add(request);
+                            break;
+                        case NOT_PRIORITIZED:
+                        default:
+                            // Do nothing.
+                            break;
                     }
                 } else {
                     Log.w(TAG, "No callback for request " + request);

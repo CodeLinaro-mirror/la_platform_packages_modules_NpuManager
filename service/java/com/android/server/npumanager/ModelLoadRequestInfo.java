@@ -24,9 +24,11 @@ public class ModelLoadRequestInfo {
 
     public enum RequestState {
         // Model load request has been received, but model has not yet been loaded.
-        PENDING,
+        PENDING_LOAD,
         // Model is now loaded.
-        LOADED
+        LOADED,
+        // The model is not prioritized for loading.
+        NOT_PRIORITIZED
     }
 
     private final ModelLoadRequest request;
