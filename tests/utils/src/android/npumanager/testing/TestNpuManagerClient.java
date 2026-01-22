@@ -20,8 +20,8 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
-import android.os.Bundle;
 import android.os.IBinder;
+import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.util.Log;
 
@@ -110,7 +110,7 @@ public class TestNpuManagerClient {
         }
     }
 
-    public void setPolicy(int policy, Bundle policyParams) throws RemoteException {
+    public void setPolicy(int policy, PersistableBundle policyParams) throws RemoteException {
         waitForConnection();
         if (mService != null) {
             mService.setPolicy(policy, policyParams);
