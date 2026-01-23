@@ -37,6 +37,7 @@ python_test_host {
         ":mobly-bundled-snippets",
         ":BackgroundNnapiDelegateApp",
         ":ForegroundNnapiDelegateApp",
+        ":SapiApp",
     ],
 
     test_suites: [
