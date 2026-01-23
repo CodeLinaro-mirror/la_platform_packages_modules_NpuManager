@@ -39,7 +39,8 @@ public class NpuManagerService extends SystemService {
     public void onStart() {
         Log.d(TAG, "onStart");
         if (mNpuManagerServiceImpl != null) {
-            publishBinderService(Context.NPU_SERVICE, mNpuManagerServiceImpl);
+            publishBinderService(
+                    Context.NPU_SERVICE, mNpuManagerServiceImpl, true /* allowIsolated */);
         }
     }
 }
