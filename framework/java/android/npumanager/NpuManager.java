@@ -28,6 +28,7 @@ import android.content.Context;
 import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.os.Trace;
+
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.concurrent.Executor;
@@ -164,8 +165,44 @@ public final class NpuManager {
     @SystemApi public static final int NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE = 4;
 
     /**
+     * Key for specifying the relative weights of different model sizes when configuring the {@link
+     * #NPU_MODEL_POLICY_BUDGET} policy.
+     *
+     * <p>The value associated with this key must be a {@link PersistableBundle} containing the
+     * custom weights.
+     *
+     * <p>The nested {@link PersistableBundle} should be constructed as follows:
+     *
+     * <ul>
+     *   <li><b>Keys:</b> The string representation of the {@link NpuModelSize} constant (e.g.,
+     *       {@code String.valueOf(NPU_MODEL_SIZE_LESS_THAN_1GB)}).
+     *   <li><b>Values:</b> A positive integer representing the weight assigned to that model size.
+     * </ul>
+     *
+     * <p>The default weights for each model size are as follows:
+     *
+     * <ul>
+     *   <li>{@link #NPU_MODEL_SIZE_LESS_THAN_1GB}: 1
+     *   <li>{@link #NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB}: 2
+     *   <li>{@link #NPU_MODEL_SIZE_GREATER_THAN_2G}: 4
+     * </ul>
+     *
+     * <p>These weights are used to calculate the total cost of loaded models against the {@link
+     * #KEY_MAX_BUDGET}. If a size is omitted from the bundle, its default weight is used. Only the
+     * listed {@link NpuModelSize} values are supported as keys in the nested Bundle.
+     *
+     * @hide
+     */
+    @SystemApi public static final String KEY_MODEL_SIZE_WEIGHTS = "modelSizeWeights";
+
+    /**
      * Key for specifying the maximum budget within {@link #NPU_MODEL_POLICY_BUDGET}. This key is
-     * used when configuring policies via {@link #setPolicy(int, Bundle)}.
+     * used when configuring policies via {@link #setPolicy(int, PersistableBundle)}. The budget is
+     * measured in "model weights." The weight of a specific model is determined by its {@link
+     * NpuModelSize}.
+     *
+     * <p>The default weights can be overridden by passing custom weights for each model size within
+     * the {@link #KEY_MODEL_SIZE_WEIGHTS} bundle.
      *
      * @hide
      */

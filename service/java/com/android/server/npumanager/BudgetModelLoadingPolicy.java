@@ -17,6 +17,7 @@
 package com.android.server.npumanager;
 
 import static android.npumanager.NpuManager.KEY_MAX_BUDGET;
+import static android.npumanager.NpuManager.KEY_MODEL_SIZE_WEIGHTS;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW;
@@ -33,9 +34,9 @@ import android.hardware.npu.EndReason;
 import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
-import android.os.BaseBundle;
 import android.os.Binder;
 import android.os.IBinder;
+import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.util.Log;
@@ -104,20 +105,47 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         }
     }
 
-    BudgetModelLoadingPolicy(PriorityManager priorityManager, @Nullable BaseBundle policyParams) {
+    BudgetModelLoadingPolicy(
+            PriorityManager priorityManager, @Nullable PersistableBundle policyParams) {
         super(priorityManager);
-        mModelSizeWeights = DEFAULT_MODEL_WEIGHTS;
-        if (policyParams != null && policyParams.containsKey(KEY_MAX_BUDGET)) {
-            int maxBudget = policyParams.getInt(KEY_MAX_BUDGET);
-            if (maxBudget <= 0) {
-                throw new IllegalArgumentException(
-                        "Maximum budget must be a positive, non-zero integer.");
-            }
-            mMaxBudget = maxBudget;
-        } else {
-            // By default budget one large model
+
+        if (policyParams == null) {
+            mModelSizeWeights = DEFAULT_MODEL_WEIGHTS;
             mMaxBudget = mModelSizeWeights.getOrDefault(NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
+            return;
         }
+
+        Map<Integer, Integer> modelSizeWeights = new HashMap<>(DEFAULT_MODEL_WEIGHTS);
+        if (policyParams.containsKey(KEY_MODEL_SIZE_WEIGHTS)) {
+            PersistableBundle weightsBundle =
+                    policyParams.getPersistableBundle(KEY_MODEL_SIZE_WEIGHTS);
+            if (weightsBundle != null) {
+                for (Integer npuModelSize : DEFAULT_MODEL_WEIGHTS.keySet()) {
+                    String sizeKey = String.valueOf(npuModelSize);
+                    if (weightsBundle.containsKey(sizeKey)) {
+                        int weight = weightsBundle.getInt(sizeKey);
+                        if (weight <= 0) {
+                            throw new IllegalArgumentException(
+                                    "Model weight for size "
+                                            + npuModelSize
+                                            + " must be a positive integer.");
+                        }
+                        modelSizeWeights.put(npuModelSize, weight);
+                    }
+                }
+            }
+        }
+        mModelSizeWeights = Map.copyOf(modelSizeWeights);
+
+        int maxBudget =
+                policyParams.containsKey(KEY_MAX_BUDGET)
+                        ? policyParams.getInt(KEY_MAX_BUDGET)
+                        : mModelSizeWeights.getOrDefault(NPU_MODEL_SIZE_GREATER_THAN_2G, 4);
+        if (maxBudget <= 0) {
+            throw new IllegalArgumentException(
+                    "Maximum budget must be a positive, non-zero integer.");
+        }
+        mMaxBudget = maxBudget;
     }
 
     BudgetModelLoadingPolicy(
