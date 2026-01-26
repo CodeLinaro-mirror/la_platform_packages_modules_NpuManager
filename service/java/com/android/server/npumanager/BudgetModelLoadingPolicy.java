@@ -34,6 +34,7 @@ import android.hardware.npu.EndReason;
 import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
+import android.npumanager.ModelLoadRequestUtils;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.PersistableBundle;
@@ -195,7 +196,9 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
 
             if (availableBudget >= getModelWeightFromSizeOrThrow(request.getSize())) {
                 Log.d(TAG, "canLoadModel: CAN_LOAD_NOW");
-                callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
+                callback.onCanLoadModel(
+                        ModelLoadRequestUtils.getParcelable(request),
+                        NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
                 return;
             }
 
@@ -262,7 +265,9 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
 
                 if (unloadingModels) {
                     Log.d(TAG, "canLoadModel: WAIT_FOR_UNLOAD");
-                    callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD);
+                    callback.onCanLoadModel(
+                            ModelLoadRequestUtils.getParcelable(request),
+                            NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD);
                 }
             } else {
                 Log.d(TAG, "canLoadModel: NOT_PRIORITIZED");
@@ -273,7 +278,9 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                                 ModelLoadRequestInfo.RequestState.NOT_PRIORITIZED);
                     }
                 }
-                callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED);
+                callback.onCanLoadModel(
+                        ModelLoadRequestUtils.getParcelable(request),
+                        NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED);
             }
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to call onCanLoadModel", e);
@@ -295,7 +302,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     mRequests.get(request) != null ? mRequests.get(request).getCallback() : null;
             if (callback != null) {
                 callback.onModelLoadRequestComplete(
-                        request, NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED);
+                        ModelLoadRequestUtils.getParcelable(request),
+                        NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED);
             }
         } catch (RemoteException e) {
             // Ignore
@@ -333,7 +341,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     mRequests.get(request) != null ? mRequests.get(request).getCallback() : null;
             if (callback != null) {
                 callback.onModelLoadRequestComplete(
-                        request, NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE);
+                        ModelLoadRequestUtils.getParcelable(request),
+                        NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE);
             }
         } catch (RemoteException e) {
             // ignore
@@ -574,7 +583,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                                     request.toString()));
                     IModelLoadCallback cb = modelLoadRequestInfo.getCallback();
                     if (cb != null) {
-                        cb.onCanLoadModel(request, statusForIdealModels);
+                        cb.onCanLoadModel(
+                                ModelLoadRequestUtils.getParcelable(request), statusForIdealModels);
                     } else {
                         Log.w(TAG, "No callback for request " + request);
                     }
@@ -597,7 +607,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                                 + ", ModelRequestInfo="
                                 + modelLoadRequestInfo);
                 try {
-                    cb.onRequestUnloadModel(request);
+                    cb.onRequestUnloadModel(ModelLoadRequestUtils.getParcelable(request));
                 } catch (RemoteException e) {
                     Log.e(TAG, "Failed to call onRequestUnloadModel", e);
                 }

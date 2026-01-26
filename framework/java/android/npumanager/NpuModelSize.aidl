@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 The Android Open Source Project
+ * Copyright 2026 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,18 @@
 package android.npumanager;
 
 /**
- * A simple Parcelable representing a model load request.
- *
  * @hide
  */
-parcelable ModelLoadRequest;
+@JavaPassthrough(annotation = "@android.annotation.IntDef(value={"
+                + "NpuModelSize.LESS_THAN_1GB,"
+                + "NpuModelSize.BETWEEN_1GB_AND_2GB,"
+                + "NpuModelSize.GREATER_THAN_2G,"
+                + "})")
+@JavaPassthrough(
+        annotation = "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.SOURCE)")
+@Backing(type="int")
+enum NpuModelSize {
+    LESS_THAN_1GB = 0,
+    BETWEEN_1GB_AND_2GB = 1,
+    GREATER_THAN_2G = 2,
+}

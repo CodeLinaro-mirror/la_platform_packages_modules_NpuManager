@@ -62,7 +62,9 @@ public final class NpuManager {
          * @hide
          */
         @RequiresNoPermission
-        public void onCanLoadModel(ModelLoadRequest request, @NpuModelLoadStatus int status) {
+        public void onCanLoadModel(
+                ModelLoadRequestParcelable requestParcelable, @NpuModelLoadStatus int status) {
+            ModelLoadRequest request = new ModelLoadRequest(requestParcelable);
             mExecutor.execute(
                     () -> {
                         mCallback.onCanLoadModel(request, status, mListener);
@@ -77,7 +79,8 @@ public final class NpuManager {
          * @hide
          */
         @RequiresNoPermission
-        public void onRequestUnloadModel(ModelLoadRequest request) {
+        public void onRequestUnloadModel(ModelLoadRequestParcelable requestParcelable) {
+            ModelLoadRequest request = new ModelLoadRequest(requestParcelable);
             mExecutor.execute(
                     () -> {
                         Trace.beginAsyncSection("NpuManager#onRequestUnloadModel", request.getId());
@@ -94,7 +97,9 @@ public final class NpuManager {
          */
         @RequiresNoPermission
         public void onModelLoadRequestComplete(
-                ModelLoadRequest request, @NpuModelLoadRequestStatus int status) {
+                ModelLoadRequestParcelable requestParcelable,
+                @NpuModelLoadRequestStatus int status) {
+            ModelLoadRequest request = new ModelLoadRequest(requestParcelable);
             mExecutor.execute(
                     () -> {
                         mCallback.onModelLoadRequestComplete(request, status);
@@ -208,24 +213,12 @@ public final class NpuManager {
      */
     @SystemApi public static final String KEY_MAX_BUDGET = "maxBudget";
 
-    /** @hide */
-    @SystemApi
-    @IntDef(
-            prefix = {"NPU_MODEL_SIZE_"},
-            value = {
-                NPU_MODEL_SIZE_LESS_THAN_1GB,
-                NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB,
-                NPU_MODEL_SIZE_GREATER_THAN_2G,
-            })
-    @Retention(RetentionPolicy.SOURCE)
-    @interface NpuModelSize {}
-
     /**
      * A small model that is one that is less than 1GB in size.
      *
      * @hide
      */
-    @SystemApi public static final int NPU_MODEL_SIZE_LESS_THAN_1GB = 0;
+    @SystemApi public static final int NPU_MODEL_SIZE_LESS_THAN_1GB = NpuModelSize.LESS_THAN_1GB;
 
     /**
      * A medium model that is one that is between 1GB and 2GB in size.
@@ -233,7 +226,7 @@ public final class NpuManager {
      * @hide
      */
     @SystemApi
-    public static final int NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB = 1;
+    public static final int NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB = NpuModelSize.BETWEEN_1GB_AND_2GB;
 
     /**
      * A large model that is one that is greater than 2GB in size.
@@ -241,7 +234,7 @@ public final class NpuManager {
      * @hide
      */
     @SystemApi
-    public static final int NPU_MODEL_SIZE_GREATER_THAN_2G = 2;
+    public static final int NPU_MODEL_SIZE_GREATER_THAN_2G = NpuModelSize.GREATER_THAN_2G;
 
     /** @hide */
     @SystemApi
@@ -259,7 +252,8 @@ public final class NpuManager {
      *
      * @hide
      */
-    @SystemApi public static final int NPU_MODEL_PRIORITY_NORMAL = 0;
+    @SystemApi
+    public static final int NPU_MODEL_PRIORITY_NORMAL = ModelLoadRequestParcelable.PRIORITY_NORMAL;
 
     /**
      * Background priority models are loaded at a lower priority than normal priority models.
@@ -267,7 +261,8 @@ public final class NpuManager {
      * @hide
      */
     @SystemApi
-    public static final int NPU_MODEL_PRIORITY_BACKGROUND = 1000;
+    public static final int NPU_MODEL_PRIORITY_BACKGROUND =
+            ModelLoadRequestParcelable.PRIORITY_BACKGROUND;
 
     /** @hide */
     @SystemApi
@@ -342,7 +337,8 @@ public final class NpuManager {
             throws RemoteException {
         Trace.beginAsyncSection("NpuManager#requestLoadModel", request.getId());
         try {
-            mNpuManagerService.canLoadModel(request, getWrapperForCallback(callback, executor));
+            mNpuManagerService.canLoadModel(
+                    request.getParcelable(), getWrapperForCallback(callback, executor));
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -359,7 +355,7 @@ public final class NpuManager {
     public void cancelModelLoad(@NonNull ModelLoadRequest request) throws RemoteException {
         Trace.beginAsyncSection("NpuManager#cancelModelLoad", request.getId());
         try {
-            mNpuManagerService.cancelModelLoad(request);
+            mNpuManagerService.cancelModelLoad(request.getParcelable());
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -379,7 +375,7 @@ public final class NpuManager {
         @PermissionManuallyEnforced
         public void notifyModelLoaded(ModelLoadRequest request) throws RemoteException {
             try {
-                mNpuManagerService.notifyModelLoaded(request);
+                mNpuManagerService.notifyModelLoaded(request.getParcelable());
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }
@@ -395,7 +391,7 @@ public final class NpuManager {
         @PermissionManuallyEnforced
         public void notifyModelUnloaded(ModelLoadRequest request) throws RemoteException {
             try {
-                mNpuManagerService.notifyModelUnloaded(request);
+                mNpuManagerService.notifyModelUnloaded(request.getParcelable());
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }

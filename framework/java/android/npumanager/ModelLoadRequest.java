@@ -25,7 +25,6 @@ import android.annotation.IntRange;
 import android.annotation.NonNull;
 import android.annotation.SystemApi;
 import android.npumanager.NpuManager.NpuModelPriority;
-import android.npumanager.NpuManager.NpuModelSize;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.os.Process;
@@ -39,16 +38,20 @@ import java.util.Objects;
 @SystemApi
 @FlaggedApi(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
 public class ModelLoadRequest implements Parcelable {
-    private final int mId;
-    private final int mSize;
-    private final int mPriority;
+    private final ModelLoadRequestParcelable mParcelable;
     private final int mUid;
 
-    private ModelLoadRequest(int id, int size, int priority) {
-        mId = id;
-        mSize = size;
-        mPriority = priority;
+    ModelLoadRequest(ModelLoadRequestParcelable parcelable) {
+        mParcelable = parcelable;
         mUid = Process.myUid();
+    }
+
+    ModelLoadRequestParcelable getParcelable() {
+        ModelLoadRequestParcelable parcelable = new ModelLoadRequestParcelable();
+        parcelable.id = mParcelable.id;
+        parcelable.size = mParcelable.size;
+        parcelable.priority = mParcelable.priority;
+        return parcelable;
     }
 
     @Override
@@ -60,26 +63,23 @@ public class ModelLoadRequest implements Parcelable {
             return false;
         }
         ModelLoadRequest that = (ModelLoadRequest) o;
-        return mId == that.mId
-                && mSize == that.mSize
-                && mPriority == that.mPriority
-                && mUid == that.mUid;
+        return mParcelable.equals(that.mParcelable) && mUid == that.mUid;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(mId, mSize, mPriority, mUid);
+        return Objects.hash(mParcelable, mUid);
     }
 
     @Override
     public String toString() {
         return "ModelLoadRequest{"
                 + "mId="
-                + mId
+                + mParcelable.id
                 + ", mSize="
-                + mSize
+                + mParcelable.size
                 + ", mPriority="
-                + mPriority
+                + mParcelable.priority
                 + ", mUid="
                 + mUid
                 + '}';
@@ -92,26 +92,25 @@ public class ModelLoadRequest implements Parcelable {
      */
     @IntRange(from = Integer.MIN_VALUE, to = Integer.MAX_VALUE)
     public int getId() {
-        return mId;
+        return mParcelable.id;
     }
 
     @Override
     public int describeContents() {
-        return 0;
+        return mParcelable.describeContents();
     }
 
     @Override
     public void writeToParcel(Parcel dest, int flags) {
-        dest.writeInt(mId);
-        dest.writeInt(mSize);
-        dest.writeInt(mPriority);
+        mParcelable.writeToParcel(dest, flags);
     }
 
     public static final @NonNull Creator<ModelLoadRequest> CREATOR =
             new Creator<ModelLoadRequest>() {
                 @Override
                 public ModelLoadRequest createFromParcel(Parcel in) {
-                    return new ModelLoadRequest(in.readInt(), in.readInt(), in.readInt());
+                    return new ModelLoadRequest(
+                            ModelLoadRequestParcelable.CREATOR.createFromParcel(in));
                 }
 
                 @Override
@@ -122,9 +121,7 @@ public class ModelLoadRequest implements Parcelable {
 
     /** Builder for {@link ModelLoadRequest}. */
     public static class Builder {
-        private final int mId;
-        private int mSize = NPU_MODEL_SIZE_LESS_THAN_1GB;
-        private int mPriority = NPU_MODEL_PRIORITY_NORMAL;
+        private final ModelLoadRequestParcelable mParcelable = new ModelLoadRequestParcelable();
 
         /**
          * Sets the size of the model to load.
@@ -133,18 +130,20 @@ public class ModelLoadRequest implements Parcelable {
          * @return The builder.
          */
         public Builder setSize(@NpuModelSize int size) {
-            mSize = size;
+            mParcelable.size = size;
             return this;
         }
 
         /**
          * Sets the priority of the model to load.
          *
-         * @param priority The priority of the model to load. Must be one of {@link NpuModelPriority}.
+         * @param priority The priority of the model to load. Must be between {@link
+         *     NpuManager#NPU_MODEL_PRIORITY_NORMAL} and {@link
+         *     NpuManager#NPU_MODEL_PRIORITY_BACKGROUND}.
          * @return The builder.
          */
         public Builder setPriority(int priority) {
-            mPriority = priority;
+            mParcelable.priority = priority;
             return this;
         }
 
@@ -155,7 +154,7 @@ public class ModelLoadRequest implements Parcelable {
          * @param id The id of the model to load.
          */
         public Builder(int id) {
-            mId = id;
+            mParcelable.id = id;
         }
 
         /**
@@ -164,7 +163,7 @@ public class ModelLoadRequest implements Parcelable {
          * @return The {@link ModelLoadRequest}.
          */
         public ModelLoadRequest build() {
-            return new ModelLoadRequest(mId, mSize, mPriority);
+            return new ModelLoadRequest(mParcelable);
         }
     }
 
@@ -175,7 +174,7 @@ public class ModelLoadRequest implements Parcelable {
      */
     @IntRange(from = NPU_MODEL_SIZE_LESS_THAN_1GB, to = NPU_MODEL_SIZE_GREATER_THAN_2G)
     public @NpuModelSize int getSize() {
-        return mSize;
+        return mParcelable.size;
     }
 
     /**
@@ -185,6 +184,6 @@ public class ModelLoadRequest implements Parcelable {
      */
     @IntRange(from = NPU_MODEL_PRIORITY_NORMAL, to = NPU_MODEL_PRIORITY_BACKGROUND)
     public @NpuModelPriority int getPriority() {
-        return mPriority;
+        return mParcelable.priority;
     }
 }
