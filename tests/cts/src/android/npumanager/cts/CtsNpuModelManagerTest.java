@@ -19,6 +19,7 @@ package android.npumanager.cts;
 import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE;
 import static android.content.Intent.FLAG_ACTIVITY_NEW_TASK;
 import static android.npumanager.NpuManager.KEY_MAX_BUDGET;
+import static android.npumanager.NpuManager.KEY_MODEL_SIZE_WEIGHTS;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW;
 import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED;
@@ -29,6 +30,7 @@ import static android.npumanager.NpuManager.NPU_MODEL_POLICY_TURN_TAKING;
 import static android.npumanager.NpuManager.NPU_MODEL_PRIORITY_NORMAL;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -58,11 +60,22 @@ import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 import android.util.Log;
+
 import androidx.core.content.ContextCompat;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 import androidx.test.uiautomator.UiDevice;
+
 import com.android.compatibility.common.util.RequiredFeatureRule;
+import com.android.npumanager.Flags;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.testng.Assert;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -72,12 +85,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.testng.Assert;
 
 @RunWith(AndroidJUnit4.class)
 public class CtsNpuModelManagerTest {
@@ -802,6 +809,123 @@ public class CtsNpuModelManagerTest {
     public void testNpuModelManager_budgetPolicy_illegalMaxBudget() {
         PersistableBundle policyParams = new PersistableBundle();
         policyParams.putInt(KEY_MAX_BUDGET, 0);
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        Objects.requireNonNull(mContext.getSystemService(NpuManager.class))
+                                .setPolicy(NPU_MODEL_POLICY_BUDGET, policyParams));
+    }
+
+    /**
+     * Tests that we can lower the weight of a specific model size to make it fit a restrictive
+     * budget.
+     */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_NPUMANAGER_ENABLED)
+    public void testNpuModelManager_budgetPolicy_customWeights_fitsBudget() throws Exception {
+        PersistableBundle policyParams = new PersistableBundle();
+        policyParams.putInt(KEY_MAX_BUDGET, 3);
+        PersistableBundle weightOverrides = new PersistableBundle();
+        weightOverrides.putInt(String.valueOf(NPU_MODEL_SIZE_GREATER_THAN_2G), 2);
+        policyParams.putPersistableBundle(KEY_MODEL_SIZE_WEIGHTS, weightOverrides);
+
+        mContext.getSystemService(NpuManager.class)
+                .setPolicy(NPU_MODEL_POLICY_BUDGET, policyParams);
+
+        CountDownLatch canLoadLatch = new CountDownLatch(1);
+        TestModelLoadRequest request =
+                new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        ITestModelLoadRequestCallback callback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    public void onCanLoadModel(
+                            TestModelLoadRequest req,
+                            int status,
+                            ITestModelLoadStatusListener listener) {
+                        if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            canLoadLatch.countDown();
+                            try {
+                                listener.notifyModelLoaded(req);
+                            } catch (RemoteException e) {
+                                // ignore
+                            }
+                        }
+                    }
+
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {}
+
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {}
+                };
+
+        mForegroundNpuManager.requestLoadModel(request, callback);
+
+        assertTrue(
+                "Model should have loaded because weight was overridden to 2 (Budget is 3)",
+                canLoadLatch.await(5, TimeUnit.SECONDS));
+    }
+
+    /**
+     * Tests that increasing the weight of a model via overrides correctly prevents loading when it
+     * exceeds the budget.
+     */
+    @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
+    public void testNpuModelManager_budgetPolicy_customWeights_exceedsBudget() throws Exception {
+        PersistableBundle policyParams = new PersistableBundle();
+
+        policyParams.putInt(KEY_MAX_BUDGET, 5);
+
+        PersistableBundle weightOverrides = new PersistableBundle();
+        weightOverrides.putInt(String.valueOf(NPU_MODEL_SIZE_GREATER_THAN_2G), 6);
+
+        policyParams.putPersistableBundle(KEY_MODEL_SIZE_WEIGHTS, weightOverrides);
+
+        mContext.getSystemService(NpuManager.class)
+                .setPolicy(NPU_MODEL_POLICY_BUDGET, policyParams);
+
+        CountDownLatch notPrioritizedLatch = new CountDownLatch(1);
+        AtomicBoolean canLoadNowReceived = new AtomicBoolean(false);
+        TestModelLoadRequest request =
+                new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        ITestModelLoadRequestCallback callback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    public void onCanLoadModel(
+                            TestModelLoadRequest req,
+                            int status,
+                            ITestModelLoadStatusListener listener) {
+                        if (status == NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED) {
+                            notPrioritizedLatch.countDown();
+                        } else if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            canLoadNowReceived.set(true);
+                        }
+                    }
+
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {}
+
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {}
+                };
+
+        mForegroundNpuManager.requestLoadModel(request, callback);
+
+        assertTrue(
+                "Did not receive NOT_PRIORITIZED within timeout",
+                notPrioritizedLatch.await(5, TimeUnit.SECONDS));
+        assertFalse("Received CAN_LOAD_NOW unexpectedly", canLoadNowReceived.get());
+    }
+
+    /** Tests that an invalid model weight (0 or negative) throws an exception. */
+    @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
+    public void testNpuModelManager_budgetPolicy_invalidWeight() {
+        PersistableBundle policyParams = new PersistableBundle();
+        policyParams.putInt(KEY_MAX_BUDGET, 10);
+
+        PersistableBundle weightOverrides = new PersistableBundle();
+        // The weights must be a positive integer.
+        weightOverrides.putInt(String.valueOf(NPU_MODEL_SIZE_GREATER_THAN_2G), 0);
+        policyParams.putPersistableBundle(KEY_MODEL_SIZE_WEIGHTS, weightOverrides);
+
         assertThrows(
                 IllegalArgumentException.class,
                 () ->

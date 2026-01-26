@@ -1,0 +1,122 @@
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+COMMON_SRCS = ["src/**/*.java"]
+COMMON_RESOURCE_DIRS = ["res"]
+COMMON_STATIC_LIBS = [
+    "guava",
+    "androidx.test.runner",
+    "androidx.test.rules",
+    "androidx.test.core",
+    "androidx.test.ext.junit",
+    "androidx.appcompat_appcompat",
+    "mobly-snippet-lib",
+    "androidx.test.uiautomator_uiautomator",
+    "androidx.startup_startup-runtime",
+    "lib_mlkit_genai_rewriting",
+    "lib_mlkit_genai_common",
+    "lib_mlkit_common",
+    "lib_play_services_basement",
+    "lib_play_services_tasks",
+    "lib_transport_runtime",
+    "lib_transport_api",
+    "lib_transport_backend_cct",
+    "lib_firebase_encoders_json",
+    "lib_firebase_encoders",
+    "lib_javax_inject",
+    "lib_firebase_components",
+]
+
+java_defaults {
+    name: "SapiAppDefaults",
+    srcs: COMMON_SRCS,
+    libs: ["framework-npumanager.stubs.module_lib"],
+    static_libs: COMMON_STATIC_LIBS,
+    resource_dirs: COMMON_RESOURCE_DIRS,
+    sdk_version: "test_current",
+    min_sdk_version: "35",
+    test_suites: ["device-tests"],
+}
+
+android_test_helper_app {
+    name: "SapiApp",
+    defaults: ["SapiAppDefaults"],
+    package_name: "com.android.npumanager.sapiapp",
+    manifest: "AndroidManifest.xml",
+    use_embedded_native_libs: true,
+    sdk_version: "test_current",
+    min_sdk_version: "35",
+}
+
+android_library_import {
+    name: "lib_mlkit_genai_rewriting",
+    aars: ["libs/genai-rewriting-1.0.0-beta1.aar"],
+    sdk_version: "current",
+}
+
+android_library_import {
+    name: "lib_mlkit_genai_common",
+    aars: ["libs/genai-common-1.0.0-beta2.aar"],
+    sdk_version: "current",
+}
+
+android_library_import {
+    name: "lib_mlkit_common",
+    aars: ["libs/common-18.11.0.aar"],
+    sdk_version: "current",
+}
+
+android_library_import {
+    name: "lib_play_services_basement",
+    aars: ["libs/play-services-basement-18.9.0.aar"],
+    sdk_version: "current",
+}
+
+android_library_import {
+    name: "lib_play_services_tasks",
+    aars: ["libs/play-services-tasks-18.4.0.aar"],
+    sdk_version: "current",
+}
+
+android_library_import {
+    name: "lib_transport_runtime",
+    aars: ["libs/transport-runtime-4.0.0.aar"],
+    sdk_version: "current",
+}
+
+android_library_import {
+    name: "lib_transport_api",
+    aars: ["libs/transport-api-4.0.0.aar"],
+    sdk_version: "current",
+}
+
+android_library_import {
+    name: "lib_transport_backend_cct",
+    aars: ["libs/transport-backend-cct-4.0.0.aar"],
+    sdk_version: "current",
+}
+
+android_library_import {
+    name: "lib_firebase_encoders_json",
+    aars: ["libs/firebase-encoders-json-18.0.1.aar"],
+    sdk_version: "current",
+}
+
+android_library_import {
+    name: "lib_firebase_components",
+    aars: ["libs/firebase-components-19.0.0.aar"],
+    sdk_version: "current",
+}
+
+java_import {
+    name: "lib_firebase_encoders",
+    jars: ["libs/firebase-encoders-17.0.0.jar"],
+    sdk_version: "current",
+}
+
+java_import {
+    name: "lib_javax_inject",
+    jars: ["libs/javax.inject-1.jar"],
+    sdk_version: "current",
+}
