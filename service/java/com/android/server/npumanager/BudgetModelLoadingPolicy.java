@@ -181,10 +181,10 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         // processing.
         int requestedAndLoadedBudget =
                 requests.keySet().stream()
-                        .filter(x -> request.id != x.id)
+                        .filter(x -> request.getId() != x.getId())
                         .mapToInt(
                                 modelLoadRequest ->
-                                        getModelWeightFromSizeOrThrow(modelLoadRequest.size))
+                                        getModelWeightFromSizeOrThrow(modelLoadRequest.getSize()))
                         .sum();
         int availableBudget = mMaxBudget - requestedAndLoadedBudget;
 
@@ -193,7 +193,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     .linkToDeath(
                             new BudgetModelLoadingPolicy.BinderDeathRecipientUid(callingUid), 0);
 
-            if (availableBudget >= getModelWeightFromSizeOrThrow(request.size)) {
+            if (availableBudget >= getModelWeightFromSizeOrThrow(request.getSize())) {
                 Log.d(TAG, "canLoadModel: CAN_LOAD_NOW");
                 callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
                 return;
@@ -201,7 +201,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
 
             // Go through all loaded requests in order of least important UIDs, and start unloading
             // models or cancelling requests until we have the necessary budget.
-            int neededBudget = getModelWeightFromSizeOrThrow(request.size) - availableBudget;
+            int neededBudget = getModelWeightFromSizeOrThrow(request.getSize()) - availableBudget;
             Set<ModelLoadRequest> requestsToCancelOrUnload = new HashSet<>();
             for (int uid : getLeastImportantUids()) {
                 if (uid == callingUid) {
@@ -227,7 +227,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     // If model is already loaded, unload it. Otherwise, cancel the request.
                     requestsToCancelOrUnload.add(r);
 
-                    neededBudget -= getModelWeightFromSizeOrThrow(r.size);
+                    neededBudget -= getModelWeightFromSizeOrThrow(r.getSize());
                     if (neededBudget <= 0) {
                         break;
                     }
@@ -355,7 +355,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                 if (uidRequests.remove(request)) {
                     Log.d(
                             TAG,
-                            "Removed request " + request.id + " from UID " + entry.getKey());
+                            "Removed request " + request.getId() + " from UID " + entry.getKey());
                     if (uidRequests.isEmpty()) {
                         iterator.remove();
                         Log.d(TAG, "Removed empty UID " + entry.getKey() + " from mUidsToRequests");
@@ -485,7 +485,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                 new HashSet<>(); // The models that should ideally be loaded;
         for (int uid : sortedUids) {
             for (ModelLoadRequest request : mUidsToRequests.getOrDefault(uid, new HashSet<>())) {
-                int weight = getModelWeightFromSizeOrThrow(request.size);
+                int weight = getModelWeightFromSizeOrThrow(request.getSize());
                 if (weight <= budget) {
                     idealRequests.add(request);
                     budget -= weight;
