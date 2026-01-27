@@ -43,6 +43,11 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
     def setup_class(self):
         logging.info('Setup class')
         self.dut = self.register_controller(android_device)[0]
+        logging.info("installing apks")
+        for apk in self.user_params['files'].values():
+            logging.info(f"installing apk: {apk}")
+            apk_utils.install(self.dut, apk[0])
+        logging.info("loading snippets")
         self.dut.load_snippet(
             'background_delegate_snippet',
             _BACKGROUND_APP_PACKAGE_NAME,
