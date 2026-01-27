@@ -34,6 +34,7 @@ import android.hardware.npu.EndReason;
 import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
+import android.npumanager.ModelLoadRequestUtils;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.PersistableBundle;
@@ -171,7 +172,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                             request,
                             callingUid,
                             callback,
-                            ModelLoadRequestInfo.RequestState.PENDING));
+                            ModelLoadRequestInfo.RequestState.PENDING_LOAD));
             requests = mRequests;
             mUidsToRequests.computeIfAbsent(callingUid, k -> new HashSet<>()).add(request);
             uidsToRequests = mUidsToRequests;
@@ -181,10 +182,10 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         // processing.
         int requestedAndLoadedBudget =
                 requests.keySet().stream()
-                        .filter(x -> request.id != x.id)
+                        .filter(x -> request.getId() != x.getId())
                         .mapToInt(
                                 modelLoadRequest ->
-                                        getModelWeightFromSizeOrThrow(modelLoadRequest.size))
+                                        getModelWeightFromSizeOrThrow(modelLoadRequest.getSize()))
                         .sum();
         int availableBudget = mMaxBudget - requestedAndLoadedBudget;
 
@@ -193,15 +194,17 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     .linkToDeath(
                             new BudgetModelLoadingPolicy.BinderDeathRecipientUid(callingUid), 0);
 
-            if (availableBudget >= getModelWeightFromSizeOrThrow(request.size)) {
+            if (availableBudget >= getModelWeightFromSizeOrThrow(request.getSize())) {
                 Log.d(TAG, "canLoadModel: CAN_LOAD_NOW");
-                callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
+                callback.onCanLoadModel(
+                        ModelLoadRequestUtils.getParcelable(request),
+                        NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
                 return;
             }
 
             // Go through all loaded requests in order of least important UIDs, and start unloading
             // models or cancelling requests until we have the necessary budget.
-            int neededBudget = getModelWeightFromSizeOrThrow(request.size) - availableBudget;
+            int neededBudget = getModelWeightFromSizeOrThrow(request.getSize()) - availableBudget;
             Set<ModelLoadRequest> requestsToCancelOrUnload = new HashSet<>();
             for (int uid : getLeastImportantUids()) {
                 if (uid == callingUid) {
@@ -227,7 +230,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     // If model is already loaded, unload it. Otherwise, cancel the request.
                     requestsToCancelOrUnload.add(r);
 
-                    neededBudget -= getModelWeightFromSizeOrThrow(r.size);
+                    neededBudget -= getModelWeightFromSizeOrThrow(r.getSize());
                     if (neededBudget <= 0) {
                         break;
                     }
@@ -252,7 +255,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                                 == ModelLoadRequestInfo.RequestState.LOADED) {
                             requestUnloadModel(r);
                             unloadingModels = true;
-                        } else {
+                        } else if (modelRequestInfo.getState()
+                                == ModelLoadRequestInfo.RequestState.PENDING_LOAD) {
                             Log.w(TAG, "Cancelling pending model r: " + r);
                             handleModelLoadCancelled(r);
                         }
@@ -261,14 +265,32 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
 
                 if (unloadingModels) {
                     Log.d(TAG, "canLoadModel: WAIT_FOR_UNLOAD");
-                    callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD);
+                    callback.onCanLoadModel(
+                            ModelLoadRequestUtils.getParcelable(request),
+                            NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD);
                 }
             } else {
                 Log.d(TAG, "canLoadModel: NOT_PRIORITIZED");
-                callback.onCanLoadModel(request, NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED);
+                synchronized (this) {
+                    ModelLoadRequestInfo modelLoadRequestInfo = mRequests.get(request);
+                    if (modelLoadRequestInfo != null) {
+                        modelLoadRequestInfo.setState(
+                                ModelLoadRequestInfo.RequestState.NOT_PRIORITIZED);
+                    }
+                }
+                callback.onCanLoadModel(
+                        ModelLoadRequestUtils.getParcelable(request),
+                        NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED);
             }
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to call onCanLoadModel", e);
+            synchronized (this) {
+                ModelLoadRequestInfo modelLoadRequestInfo = mRequests.get(request);
+                if (modelLoadRequestInfo != null) {
+                    modelLoadRequestInfo.setState(
+                            ModelLoadRequestInfo.RequestState.NOT_PRIORITIZED);
+                }
+            }
         }
     }
 
@@ -280,7 +302,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     mRequests.get(request) != null ? mRequests.get(request).getCallback() : null;
             if (callback != null) {
                 callback.onModelLoadRequestComplete(
-                        request, NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED);
+                        ModelLoadRequestUtils.getParcelable(request),
+                        NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED);
             }
         } catch (RemoteException e) {
             // Ignore
@@ -318,7 +341,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     mRequests.get(request) != null ? mRequests.get(request).getCallback() : null;
             if (callback != null) {
                 callback.onModelLoadRequestComplete(
-                        request, NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE);
+                        ModelLoadRequestUtils.getParcelable(request),
+                        NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE);
             }
         } catch (RemoteException e) {
             // ignore
@@ -340,7 +364,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                 if (uidRequests.remove(request)) {
                     Log.d(
                             TAG,
-                            "Removed request " + request.id + " from UID " + entry.getKey());
+                            "Removed request " + request.getId() + " from UID " + entry.getKey());
                     if (uidRequests.isEmpty()) {
                         iterator.remove();
                         Log.d(TAG, "Removed empty UID " + entry.getKey() + " from mUidsToRequests");
@@ -396,7 +420,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             for (ModelLoadRequest request : equalPriorityRequests) {
                 if (mRequests.get(request) != null
                         && mRequests.get(request).getState()
-                                == ModelLoadRequestInfo.RequestState.PENDING) {
+                                == ModelLoadRequestInfo.RequestState.PENDING_LOAD) {
                     shouldUnload = true;
                     break;
                 }
@@ -470,7 +494,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                 new HashSet<>(); // The models that should ideally be loaded;
         for (int uid : sortedUids) {
             for (ModelLoadRequest request : mUidsToRequests.getOrDefault(uid, new HashSet<>())) {
-                int weight = getModelWeightFromSizeOrThrow(request.size);
+                int weight = getModelWeightFromSizeOrThrow(request.getSize());
                 if (weight <= budget) {
                     idealRequests.add(request);
                     budget -= weight;
@@ -493,23 +517,29 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             if (!idealRequests.contains(request)) {
                 IModelLoadCallback cb = modelLoadRequestInfo.getCallback();
                 if (cb != null) {
-                    if (modelLoadRequestInfo.getState()
-                            == ModelLoadRequestInfo.RequestState.LOADED) {
-                        Log.d(
-                                TAG,
-                                "Requesting unload request="
-                                        + request
-                                        + ", ModelRequestInfo="
-                                        + modelLoadRequestInfo);
-                        requestsToUnload.add(request);
-                    } else {
-                        Log.w(
-                                TAG,
-                                "Cancelling request="
-                                        + request
-                                        + ", ModelRequestInfo="
-                                        + modelLoadRequestInfo);
-                        requestsToCancel.add(request);
+                    switch (modelLoadRequestInfo.getState()) {
+                        case LOADED:
+                            Log.d(
+                                    TAG,
+                                    "Requesting unload request="
+                                            + request
+                                            + ", ModelRequestInfo="
+                                            + modelLoadRequestInfo);
+                            requestsToUnload.add(request);
+                            break;
+                        case PENDING_LOAD:
+                            Log.w(
+                                    TAG,
+                                    "Cancelling request="
+                                            + request
+                                            + ", ModelRequestInfo="
+                                            + modelLoadRequestInfo);
+                            requestsToCancel.add(request);
+                            break;
+                        case NOT_PRIORITIZED:
+                        default:
+                            // Do nothing.
+                            break;
                     }
                 } else {
                     Log.w(TAG, "No callback for request " + request);
@@ -553,7 +583,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                                     request.toString()));
                     IModelLoadCallback cb = modelLoadRequestInfo.getCallback();
                     if (cb != null) {
-                        cb.onCanLoadModel(request, statusForIdealModels);
+                        cb.onCanLoadModel(
+                                ModelLoadRequestUtils.getParcelable(request), statusForIdealModels);
                     } else {
                         Log.w(TAG, "No callback for request " + request);
                     }
@@ -576,7 +607,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                                 + ", ModelRequestInfo="
                                 + modelLoadRequestInfo);
                 try {
-                    cb.onRequestUnloadModel(request);
+                    cb.onRequestUnloadModel(ModelLoadRequestUtils.getParcelable(request));
                 } catch (RemoteException e) {
                     Log.e(TAG, "Failed to call onRequestUnloadModel", e);
                 }

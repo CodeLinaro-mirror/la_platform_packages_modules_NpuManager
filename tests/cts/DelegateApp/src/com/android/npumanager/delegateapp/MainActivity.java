@@ -140,10 +140,11 @@ public class MainActivity extends Activity {
             loadModelButton.setEnabled(false);
             unloadModelButton.setEnabled(false);
         }
-        ModelLoadRequest request = new ModelLoadRequest();
-        request.id = 54;
-        request.size = NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
-        request.priority = NpuManager.NPU_MODEL_PRIORITY_NORMAL;
+        ModelLoadRequest request =
+                new ModelLoadRequest.Builder(54)
+                        .setSize(NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB)
+                        .setPriority(NpuManager.NPU_MODEL_PRIORITY_NORMAL)
+                        .build();
         loadModelButton.setOnClickListener(
                 v -> {
                     try {

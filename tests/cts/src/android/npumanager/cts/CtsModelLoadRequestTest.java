@@ -19,7 +19,7 @@ package android.npumanager.cts;
 import static org.junit.Assert.assertEquals;
 
 import android.npumanager.ModelLoadRequest;
-import android.npumanager.NpuModelSize;
+import android.npumanager.NpuManager;
 import android.os.Parcel;
 import androidx.test.runner.AndroidJUnit4;
 import org.junit.Test;
@@ -28,15 +28,16 @@ import org.junit.runner.RunWith;
 @RunWith(AndroidJUnit4.class)
 public class CtsModelLoadRequestTest {
     private static final int TEST_ID = 12345;
-    private static final int TEST_SIZE = NpuModelSize.LESS_THAN_1GB;
-    private static final int TEST_PRIORITY = ModelLoadRequest.PRIORITY_NORMAL;
+    private static final int TEST_SIZE = NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
+    private static final int TEST_PRIORITY = NpuManager.NPU_MODEL_PRIORITY_NORMAL;
 
     @Test
     public void testParcelable() {
-        ModelLoadRequest request = new ModelLoadRequest();
-        request.id = TEST_ID;
-        request.size = TEST_SIZE;
-        request.priority = TEST_PRIORITY;
+        ModelLoadRequest request =
+                new ModelLoadRequest.Builder(TEST_ID)
+                        .setSize(TEST_SIZE)
+                        .setPriority(TEST_PRIORITY)
+                        .build();
 
         Parcel parcel = Parcel.obtain();
         try {

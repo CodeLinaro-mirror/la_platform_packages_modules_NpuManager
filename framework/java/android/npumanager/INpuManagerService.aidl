@@ -17,7 +17,7 @@
 package android.npumanager;
 
 import android.npumanager.IModelLoadCallback;
-import android.npumanager.ModelLoadRequest;
+import android.npumanager.ModelLoadRequestParcelable;
 import android.os.PersistableBundle;
 
 /**
@@ -26,13 +26,13 @@ import android.os.PersistableBundle;
  */
 interface INpuManagerService {
     @PermissionManuallyEnforced
-    void canLoadModel(in ModelLoadRequest request, in IModelLoadCallback callback);
+    void canLoadModel(in ModelLoadRequestParcelable request, in IModelLoadCallback callback);
     @PermissionManuallyEnforced
-    void cancelModelLoad(in ModelLoadRequest request);
+    void cancelModelLoad(in ModelLoadRequestParcelable request);
     @PermissionManuallyEnforced
-    void notifyModelLoaded(in ModelLoadRequest request);
+    void notifyModelLoaded(in ModelLoadRequestParcelable request);
     @PermissionManuallyEnforced
-    void notifyModelUnloaded(in ModelLoadRequest request);
+    void notifyModelUnloaded(in ModelLoadRequestParcelable request);
     @PermissionManuallyEnforced
     void setPolicy(int policy, in PersistableBundle policyParams);
 }

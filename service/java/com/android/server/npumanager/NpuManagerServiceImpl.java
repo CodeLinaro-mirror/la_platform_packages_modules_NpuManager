@@ -36,6 +36,8 @@ import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.INpuManagerService;
 import android.npumanager.ModelLoadRequest;
+import android.npumanager.ModelLoadRequestParcelable;
+import android.npumanager.ModelLoadRequestUtils;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
@@ -202,7 +204,9 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
     /** Callback will be called when it is advisable to load the model. */
     @Override
     @PermissionManuallyEnforced
-    public void canLoadModel(ModelLoadRequest request, IModelLoadCallback callback) {
+    public void canLoadModel(
+            ModelLoadRequestParcelable requestParcelable, IModelLoadCallback callback) {
+        ModelLoadRequest request = ModelLoadRequestUtils.fromParcelable(requestParcelable);
         Log.d(TAG, "canLoadModel: request=" + request);
         mNpuModelLoadingPolicy.canLoadModel(request, callback);
     }
@@ -210,7 +214,8 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
     /** Cancel the request to load the model. */
     @Override
     @PermissionManuallyEnforced
-    public void cancelModelLoad(ModelLoadRequest request) {
+    public void cancelModelLoad(ModelLoadRequestParcelable requestParcelable) {
+        ModelLoadRequest request = ModelLoadRequestUtils.fromParcelable(requestParcelable);
         Trace.beginSection("NpuManagerServiceImpl#cancelModelLoad");
         Log.d(TAG, "cancelModelLoad: request=" + request);
         mNpuModelLoadingPolicy.handleModelLoadCancelled(request);
@@ -220,7 +225,8 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
     /** Inform the system that the model for the request has been loaded. */
     @Override
     @PermissionManuallyEnforced
-    public void notifyModelLoaded(ModelLoadRequest request) {
+    public void notifyModelLoaded(ModelLoadRequestParcelable requestParcelable) {
+        ModelLoadRequest request = ModelLoadRequestUtils.fromParcelable(requestParcelable);
         Trace.beginSection("NpuManagerServiceImpl#notifyModelLoaded");
         Log.d(TAG, "notifyModelLoaded: request=" + request);
         mNpuModelLoadingPolicy.handleModelLoaded(request);
@@ -233,7 +239,8 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
      */
     @Override
     @PermissionManuallyEnforced
-    public void notifyModelUnloaded(ModelLoadRequest request) {
+    public void notifyModelUnloaded(ModelLoadRequestParcelable requestParcelable) {
+        ModelLoadRequest request = ModelLoadRequestUtils.fromParcelable(requestParcelable);
         Trace.beginSection("NpuManagerServiceImpl#notifyModelUnloaded");
         Log.d(TAG, "notifyModelUnloaded: request=" + request);
         mNpuModelLoadingPolicy.handleModelUnloaded(request);

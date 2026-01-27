@@ -17,18 +17,19 @@
 package android.npumanager;
 
 /**
+ * Utility functions for converting between {@link ModelLoadRequest} and {@link
+ * ModelLoadRequestParcelable}.
+ *
  * @hide
  */
-@JavaPassthrough(annotation = "@android.annotation.IntDef(value={"
-                + "NpuModelSize.LESS_THAN_1GB,"
-                + "NpuModelSize.BETWEEN_1GB_AND_2GB,"
-                + "NpuModelSize.GREATER_THAN_2G,"
-                + "})")
-@JavaPassthrough(
-        annotation = "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.SOURCE)")
-@Backing(type="int")
-enum NpuModelSize {
-    LESS_THAN_1GB = 0,
-    BETWEEN_1GB_AND_2GB = 1,
-    GREATER_THAN_2G = 2,
+public final class ModelLoadRequestUtils {
+    private ModelLoadRequestUtils() {}
+
+    public static ModelLoadRequestParcelable getParcelable(ModelLoadRequest request) {
+        return request.getParcelable();
+    }
+
+    public static ModelLoadRequest fromParcelable(ModelLoadRequestParcelable parcelable) {
+        return new ModelLoadRequest(parcelable);
+    }
 }
