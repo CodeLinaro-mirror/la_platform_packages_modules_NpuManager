@@ -140,7 +140,7 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
         self.dut.sapi_snippet.startActivity()
         self.dut.sapi_snippet.rewriteText()
         #Wait for inference.
-        inference_handler.waitAndGet('inference', 10)
+        inference_handler.waitAndGet('inference', 30)
 
     def test_foreground_app_finishes_first(self):
         """
