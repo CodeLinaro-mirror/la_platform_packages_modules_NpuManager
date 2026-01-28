@@ -21,8 +21,10 @@
 #![allow(unused_variables)]
 
 mod alloc_request;
+mod cookie;
 
 use crate::alloc_request::ANpuManager_AllocRequest;
+use errno::{set_errno, Errno};
 use npumanager_bindings::ANpuBuffer;
 
 /// Tests if the provided requests are supported or not.
@@ -50,7 +52,10 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_isSupported(
     requestsLen: usize,
     outIsSupported: *mut bool,
 ) -> std::ffi::c_int {
-    panic!("not implemented");
+    // SAFETY: The caller ensures `outIsSupported` is valid for `requestsLen` elements.
+    let results_slice = unsafe { std::slice::from_raw_parts_mut(outIsSupported, requestsLen) };
+    results_slice.fill(false);
+    0
 }
 
 /// Asynchronously allocates multiple buffers.
@@ -70,7 +75,14 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_allocAsync(
     requests: *const *mut ANpuManager_AllocRequest,
     requestsLen: usize,
 ) {
-    panic!("not implemented");
+    // SAFETY: The caller ensures that `requests` is a valid pointer and has
+    // `requestsLen` elements.
+    let requests_slice = unsafe { std::slice::from_raw_parts(requests, requestsLen) };
+
+    // SAFETY: The caller ensures that each element of `requests` is a valid pointer.
+    let requests_refs = requests_slice.iter().map(|&ptr| unsafe { &*ptr });
+
+    requests_refs.for_each(|request| request.on_failure(libc::ENOSYS));
 }
 
 /// Notifies NpuManager that the app is done with these buffers. NpuManager may
@@ -93,7 +105,8 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_free(
     buffers: *const *mut ANpuBuffer,
     buffersLen: usize,
 ) -> std::ffi::c_int {
-    panic!("not implemented");
+    set_errno(Errno(libc::ENOSYS));
+    -1
 }
 
 /// Maps a buffer into the application's address space.
@@ -121,7 +134,8 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_map(
     flags: std::ffi::c_int,
     offset: libc::off_t,
 ) -> *mut std::ffi::c_void {
-    panic!("not implemented");
+    set_errno(Errno(libc::ENOSYS));
+    libc::MAP_FAILED
 }
 
 /// Unmaps a previously mapped buffer.
@@ -142,7 +156,8 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_unmap(
     addr: *mut std::ffi::c_void,
     length: usize,
 ) -> std::ffi::c_int {
-    panic!("not implemented");
+    set_errno(Errno(libc::ENOSYS));
+    -1
 }
 
 /// Sets the priority of the buffer.
@@ -161,5 +176,6 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_setPriority(
     buf: &mut ANpuBuffer,
     newBufferPriority: i32,
 ) -> std::ffi::c_int {
-    panic!("not implemented");
+    set_errno(Errno(libc::ENOSYS));
+    -1
 }

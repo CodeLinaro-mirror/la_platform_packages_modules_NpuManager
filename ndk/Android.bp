@@ -63,6 +63,7 @@ rust_ffi_static {
     ],
     rustlibs: [
         "libbinder_rs",
+        "liberrno",
         "libnpumanager_bindings",
         "liblibc",
     ],
