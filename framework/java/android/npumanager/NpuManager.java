@@ -62,12 +62,14 @@ public final class NpuManager {
          * @hide
          */
         @RequiresNoPermission
-        public void onCanLoadModel(ModelLoadRequest request, @NpuModelLoadStatus int status) {
+        public void onCanLoadModel(
+                ModelLoadRequestParcelable requestParcelable, @NpuModelLoadStatus int status) {
+            ModelLoadRequest request = new ModelLoadRequest(requestParcelable);
             mExecutor.execute(
                     () -> {
                         mCallback.onCanLoadModel(request, status, mListener);
                     });
-            Trace.endAsyncSection("NpuManager#requestLoadModel", request.id);
+            Trace.endAsyncSection("NpuManager#requestLoadModel", request.getId());
         }
 
         /**
@@ -77,10 +79,11 @@ public final class NpuManager {
          * @hide
          */
         @RequiresNoPermission
-        public void onRequestUnloadModel(ModelLoadRequest request) {
+        public void onRequestUnloadModel(ModelLoadRequestParcelable requestParcelable) {
+            ModelLoadRequest request = new ModelLoadRequest(requestParcelable);
             mExecutor.execute(
                     () -> {
-                        Trace.beginAsyncSection("NpuManager#onRequestUnloadModel", request.id);
+                        Trace.beginAsyncSection("NpuManager#onRequestUnloadModel", request.getId());
                         mCallback.onRequestUnloadModel(request);
                     });
         }
@@ -94,13 +97,15 @@ public final class NpuManager {
          */
         @RequiresNoPermission
         public void onModelLoadRequestComplete(
-                ModelLoadRequest request, @NpuModelLoadRequestStatus int status) {
+                ModelLoadRequestParcelable requestParcelable,
+                @NpuModelLoadRequestStatus int status) {
+            ModelLoadRequest request = new ModelLoadRequest(requestParcelable);
             mExecutor.execute(
                     () -> {
                         mCallback.onModelLoadRequestComplete(request, status);
                     });
             if (status == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
-                Trace.endAsyncSection("NpuManager#cancelModelLoad", request.id);
+                Trace.endAsyncSection("NpuManager#cancelModelLoad", request.getId());
             }
         }
     }
@@ -231,12 +236,24 @@ public final class NpuManager {
     @SystemApi
     public static final int NPU_MODEL_SIZE_GREATER_THAN_2G = NpuModelSize.GREATER_THAN_2G;
 
+    /** @hide */
+    @SystemApi
+    @IntDef(
+            prefix = {"NPU_MODEL_PRIORITY_"},
+            value = {
+                NPU_MODEL_PRIORITY_NORMAL,
+                NPU_MODEL_PRIORITY_BACKGROUND,
+            })
+    @Retention(RetentionPolicy.SOURCE)
+    @interface NpuModelPriority {}
+
     /**
      * Normal priority models are loaded at a higher priority than background priority models.
      *
      * @hide
      */
-    @SystemApi public static final int NPU_MODEL_PRIORITY_NORMAL = ModelLoadRequest.PRIORITY_NORMAL;
+    @SystemApi
+    public static final int NPU_MODEL_PRIORITY_NORMAL = ModelLoadRequestParcelable.PRIORITY_NORMAL;
 
     /**
      * Background priority models are loaded at a lower priority than normal priority models.
@@ -244,7 +261,8 @@ public final class NpuManager {
      * @hide
      */
     @SystemApi
-    public static final int NPU_MODEL_PRIORITY_BACKGROUND = ModelLoadRequest.PRIORITY_BACKGROUND;
+    public static final int NPU_MODEL_PRIORITY_BACKGROUND =
+            ModelLoadRequestParcelable.PRIORITY_BACKGROUND;
 
     /** @hide */
     @SystemApi
@@ -317,9 +335,10 @@ public final class NpuManager {
             @NonNull ModelLoadRequestCallback callback,
             @NonNull Executor executor)
             throws RemoteException {
-        Trace.beginAsyncSection("NpuManager#requestLoadModel", request.id);
+        Trace.beginAsyncSection("NpuManager#requestLoadModel", request.getId());
         try {
-            mNpuManagerService.canLoadModel(request, getWrapperForCallback(callback, executor));
+            mNpuManagerService.canLoadModel(
+                    request.getParcelable(), getWrapperForCallback(callback, executor));
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -334,9 +353,9 @@ public final class NpuManager {
     @SystemApi
     @RequiresPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API)
     public void cancelModelLoad(@NonNull ModelLoadRequest request) throws RemoteException {
-        Trace.beginAsyncSection("NpuManager#cancelModelLoad", request.id);
+        Trace.beginAsyncSection("NpuManager#cancelModelLoad", request.getId());
         try {
-            mNpuManagerService.cancelModelLoad(request);
+            mNpuManagerService.cancelModelLoad(request.getParcelable());
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -356,7 +375,7 @@ public final class NpuManager {
         @PermissionManuallyEnforced
         public void notifyModelLoaded(ModelLoadRequest request) throws RemoteException {
             try {
-                mNpuManagerService.notifyModelLoaded(request);
+                mNpuManagerService.notifyModelLoaded(request.getParcelable());
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }
@@ -372,11 +391,11 @@ public final class NpuManager {
         @PermissionManuallyEnforced
         public void notifyModelUnloaded(ModelLoadRequest request) throws RemoteException {
             try {
-                mNpuManagerService.notifyModelUnloaded(request);
+                mNpuManagerService.notifyModelUnloaded(request.getParcelable());
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }
-            Trace.endAsyncSection("NpuManager#onRequestUnloadModel", request.id);
+            Trace.endAsyncSection("NpuManager#onRequestUnloadModel", request.getId());
         }
     }
 
