@@ -16,31 +16,17 @@
 
 //! Implements the allocation request type.
 
-use crate::cookie::Cookie;
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(unused_variables)]
+
 use npumanager_bindings::{
     ANpuBuffer_Type, ANpuManager_AllocCallback, ANpuManager_CookieDeleter,
     ANpuManager_PreemptCallback,
 };
-use std::sync::Arc;
 
 /// Allocation request.
-pub struct ANpuManager_AllocRequest {
-    cookie: Arc<Cookie>,
-    on_alloc: ANpuManager_AllocCallback,
-}
-
-impl ANpuManager_AllocRequest {
-    // Reports a failure. error_num must be non-zero.
-    pub fn on_failure(&self, error_num: i32) {
-        let error_num = if error_num == 0 { libc::EINVAL } else { error_num };
-        // Doc of ANpuManager_allocAsync requires onAlloc to be set.
-        let on_alloc = self.on_alloc.expect("onAlloc is null");
-        // SAFETY: see ANpuManagerImpl_ANpuManager_AllocRequest_setOnAlloc.
-        unsafe {
-            on_alloc(self.cookie.raw(), error_num, std::ptr::null_mut());
-        }
-    }
-}
+pub struct ANpuManager_AllocRequest {}
 
 /// Creates a new allocation request. Fields are initialized to a default state.
 ///
@@ -49,11 +35,7 @@ impl ANpuManager_AllocRequest {
 #[no_mangle]
 pub extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_create() -> *mut ANpuManager_AllocRequest
 {
-    let req = Box::new(ANpuManager_AllocRequest {
-        // SAFETY: Cookie::new allows deleter to be None.
-        cookie: unsafe { Cookie::new(std::ptr::null_mut(), None) },
-        on_alloc: None,
-    });
+    let req = Box::new(ANpuManager_AllocRequest {});
     // This leaks the raw pointer, which the user takes ownership of.
     Box::into_raw(req)
 }
@@ -100,11 +82,7 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setCookie(
     cookie: *mut std::ffi::c_void,
     cookie_deleter: ANpuManager_CookieDeleter,
 ) {
-    // INVARIANT: The caller asserted that the new cookie is compatible with the last registered
-    //   on_alloc/on_preempt callback, if any
-    // SAFETY: The caller asserted that the deleter is either None or a function that can be called
-    //   exactly once from any thread to delete the cookie.
-    request.cookie = unsafe { Cookie::new(cookie, cookie_deleter) };
+    panic!("not implemented");
 }
 
 /// Sets the device number for an allocation request.
@@ -121,6 +99,7 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setDeviceNumbe
     request: &mut ANpuManager_AllocRequest,
     deviceNumber: i32,
 ) {
+    panic!("not implemented");
 }
 
 /// Sets the purpose of the buffer for an allocation request.
@@ -137,6 +116,7 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setBufferType(
     request: &mut ANpuManager_AllocRequest,
     bufferType: ANpuBuffer_Type,
 ) {
+    panic!("not implemented");
 }
 
 /// Sets the size of the buffer in bytes for an allocation request.
@@ -153,6 +133,7 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setSize(
     request: &mut ANpuManager_AllocRequest,
     size: i64,
 ) {
+    panic!("not implemented");
 }
 
 /// Sets the buffer priority for an allocation request.
@@ -169,6 +150,7 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setBufferPrior
     request: &mut ANpuManager_AllocRequest,
     bufferPriority: i32,
 ) {
+    panic!("not implemented");
 }
 
 /// Sets the file segment to load for an allocation request.
@@ -193,6 +175,7 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setFileSegment
     segmentLength: i64,
     bufferOffset: i64,
 ) {
+    panic!("not implemented");
 }
 
 /// Sets the protection flags for the buffer.
@@ -210,6 +193,7 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setProtectionF
     request: &mut ANpuManager_AllocRequest,
     prot: std::ffi::c_int,
 ) {
+    panic!("not implemented");
 }
 
 /// Sets the allocation callback for an allocation request.
@@ -259,10 +243,7 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setOnAlloc(
     request: &mut ANpuManager_AllocRequest,
     onAlloc: ANpuManager_AllocCallback,
 ) {
-    if onAlloc.is_none() {
-        panic!("onAlloc is null");
-    }
-    request.on_alloc = onAlloc;
+    panic!("not implemented");
 }
 
 /// Sets the preemption callback for an allocation request.
@@ -274,20 +255,13 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setOnAlloc(
 /// The caller is responsible for providing a valid callback, which may
 /// be null.
 ///
-/// **Safety of arguments of the callback:**
-///
-/// * cookie:
-///     * This is the value previously provided in ANpuManager_AllocRequest_setCookie().
-///
 /// # Arguments
 /// * `request` - The allocation request.
 /// * `onPreempt` - The preemption callback.
-//
-// See ANpuManagerImpl_ANpuManager_AllocRequest_setOnAlloc for more details about the callback
-// safety.
 #[no_mangle]
 pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setOnPreempt(
     request: &mut ANpuManager_AllocRequest,
     onPreempt: ANpuManager_PreemptCallback,
 ) {
+    panic!("not implemented");
 }
