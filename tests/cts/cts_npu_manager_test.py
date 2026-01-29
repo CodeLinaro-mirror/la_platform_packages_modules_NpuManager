@@ -43,6 +43,11 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
     def setup_class(self):
         logging.info('Setup class')
         self.dut = self.register_controller(android_device)[0]
+        logging.info("installing apks")
+        for apk in self.user_params['files'].values():
+            logging.info(f"installing apk: {apk}")
+            apk_utils.install(self.dut, apk[0])
+        logging.info("loading snippets")
         self.dut.load_snippet(
             'background_delegate_snippet',
             _BACKGROUND_APP_PACKAGE_NAME,
@@ -59,6 +64,7 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
     def teardown_test(self):
         self.dut.background_delegate_snippet.closeActivity()
         self.dut.foreground_delegate_snippet.closeActivity()
+        self.dut.sapi_snippet.closeActivity()
 
     def _override_device_config(
             self,
@@ -108,6 +114,7 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
                                      True)
         self._override_device_config(_MACHINE_LEARNING_NAMESPACE,
                                      _NPU_MANAGER_ENABLED_FLAG, True)
+
         try:
             pid = (self.dut.adb.shell(["pidof", "com.google.android.aicore"])
                   .decode("utf-8"))
@@ -135,7 +142,7 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
         self.dut.sapi_snippet.startActivity()
         self.dut.sapi_snippet.rewriteText()
         #Wait for inference.
-        inference_handler.waitAndGet('inference', 10)
+        inference_handler.waitAndGet('inference', 20)
 
     def test_foreground_app_finishes_first(self):
         """

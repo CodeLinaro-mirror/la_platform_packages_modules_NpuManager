@@ -27,6 +27,10 @@ import static android.npumanager.NpuManager.NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
 
+import static com.android.server.npumanager.ModelLoadRequestInfo.RequestState.LOADED;
+import static com.android.server.npumanager.ModelLoadRequestInfo.RequestState.NOT_PRIORITIZED;
+import static com.android.server.npumanager.ModelLoadRequestInfo.RequestState.PENDING_LOAD;
+
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
@@ -45,6 +49,7 @@ import android.util.Log;
 import com.android.internal.annotations.GuardedBy;
 
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -167,12 +172,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
 
         synchronized (this) {
             mRequests.put(
-                    request,
-                    new ModelLoadRequestInfo(
-                            request,
-                            callingUid,
-                            callback,
-                            ModelLoadRequestInfo.RequestState.PENDING_LOAD));
+                    request, new ModelLoadRequestInfo(request, callingUid, callback, PENDING_LOAD));
             requests = mRequests;
             mUidsToRequests.computeIfAbsent(callingUid, k -> new HashSet<>()).add(request);
             uidsToRequests = mUidsToRequests;
@@ -251,12 +251,10 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                         continue;
                     }
                     synchronized (this) {
-                        if (modelRequestInfo.getState()
-                                == ModelLoadRequestInfo.RequestState.LOADED) {
+                        if (modelRequestInfo.getState() == LOADED) {
                             requestUnloadModel(r);
                             unloadingModels = true;
-                        } else if (modelRequestInfo.getState()
-                                == ModelLoadRequestInfo.RequestState.PENDING_LOAD) {
+                        } else if (modelRequestInfo.getState() == PENDING_LOAD) {
                             Log.w(TAG, "Cancelling pending model r: " + r);
                             handleModelLoadCancelled(r);
                         }
@@ -322,7 +320,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             if (modelLoadRequestInfo == null) {
                 return;
             }
-            modelLoadRequestInfo.setState(ModelLoadRequestInfo.RequestState.LOADED);
+            modelLoadRequestInfo.setState(LOADED);
         }
     }
 
@@ -419,8 +417,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             boolean shouldUnload = false;
             for (ModelLoadRequest request : equalPriorityRequests) {
                 if (mRequests.get(request) != null
-                        && mRequests.get(request).getState()
-                                == ModelLoadRequestInfo.RequestState.PENDING_LOAD) {
+                        && mRequests.get(request).getState() == PENDING_LOAD) {
                     shouldUnload = true;
                     break;
                 }
@@ -430,11 +427,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             // unload that, instead of unloading all models for the UID.
             if (shouldUnload) {
                 mRequests.values().stream()
-                        .filter(
-                                info ->
-                                        info.getUid() == completedUid
-                                                && info.getState()
-                                                        == ModelLoadRequestInfo.RequestState.LOADED)
+                        .filter(info -> info.getUid() == completedUid && info.getState() == LOADED)
                         .forEach(info -> requestUnloadModel(info.getRequest()));
             }
         }
@@ -493,7 +486,24 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         Set<ModelLoadRequest> idealRequests =
                 new HashSet<>(); // The models that should ideally be loaded;
         for (int uid : sortedUids) {
-            for (ModelLoadRequest request : mUidsToRequests.getOrDefault(uid, new HashSet<>())) {
+            List<ModelLoadRequest> requestsForUid =
+                    new ArrayList<>(mUidsToRequests.getOrDefault(uid, new HashSet<>()));
+            requestsForUid.sort(
+                    Comparator.comparingInt(
+                            request -> {
+                                ModelLoadRequestInfo info = mRequests.get(request);
+                                if (info == null) {
+                                    return Integer.MAX_VALUE;
+                                }
+
+                                return switch (info.getState()) {
+                                    case LOADED -> 1;
+                                    case PENDING_LOAD -> 2;
+                                    case NOT_PRIORITIZED -> 3;
+                                };
+                            }));
+
+            for (ModelLoadRequest request : requestsForUid) {
                 int weight = getModelWeightFromSizeOrThrow(request.getSize());
                 if (weight <= budget) {
                     idealRequests.add(request);
@@ -574,7 +584,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     Log.w(TAG, "No model info for request=" + request);
                     continue;
                 }
-                if (modelLoadRequestInfo.getState() != ModelLoadRequestInfo.RequestState.LOADED) {
+                if (modelLoadRequestInfo.getState() != LOADED) {
                     Log.d(
                             TAG,
                             String.format(
@@ -583,6 +593,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                                     request.toString()));
                     IModelLoadCallback cb = modelLoadRequestInfo.getCallback();
                     if (cb != null) {
+                        modelLoadRequestInfo.setState(PENDING_LOAD);
                         cb.onCanLoadModel(
                                 ModelLoadRequestUtils.getParcelable(request), statusForIdealModels);
                     } else {
