@@ -32,6 +32,18 @@ public class CtsModelLoadRequestTest {
     private static final int TEST_PRIORITY = NpuManager.NPU_MODEL_PRIORITY_NORMAL;
 
     @Test
+    public void testGetters() {
+        ModelLoadRequest request =
+                new ModelLoadRequest.Builder(TEST_ID)
+                        .setSize(TEST_SIZE)
+                        .setPriority(TEST_PRIORITY)
+                        .build();
+        assertEquals(TEST_ID, request.getId());
+        assertEquals(TEST_SIZE, request.getSize());
+        assertEquals(TEST_PRIORITY, request.getPriority());
+    }
+
+    @Test
     public void testParcelable() {
         ModelLoadRequest request =
                 new ModelLoadRequest.Builder(TEST_ID)
