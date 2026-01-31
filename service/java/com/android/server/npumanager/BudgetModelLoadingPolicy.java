@@ -416,8 +416,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             // its requests.
             boolean shouldUnload = false;
             for (ModelLoadRequest request : equalPriorityRequests) {
-                if (mRequests.get(request) != null
-                        && mRequests.get(request).getState() == PENDING_LOAD) {
+                if (mRequests.get(request) != null && mRequests.get(request).getState() != LOADED) {
                     shouldUnload = true;
                     break;
                 }
