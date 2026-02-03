@@ -16,6 +16,9 @@
 
 package com.android.npumanager.delegateapp;
 
+import static android.os.Process.myPid;
+import static android.os.Process.myUid;
+
 import android.app.Activity;
 import android.content.Intent;
 import android.content.res.AssetManager;
@@ -25,175 +28,184 @@ import android.npumanager.NpuManager;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.util.Log;
-import android.widget.Button;
-import android.widget.TextView;
+
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-    private static final String TAG = "NnapiDelegateAppSample";
+    private static final String TAG = "NpuDelegateApp";
+    // For using NNAPI to run inference.
     private static final String TEST_TFLITE_MODEL = "mobilenet_v2_224_100.tflite";
     private static final String INPUT_DATA_FILE = "panda.ndarray";
     public static final String ACTION_INFERENCE_COMPLETE = "com.android.npumanager.delegateapp."
             + "ACTION_INFERENCE_COMPLETE";
 
-    private NpuManager npuManager;
     private byte[] modelBuffer = null;
 
     private byte[] inputBuffer = null;
-    private Button loadModelButton;
-    private Button unloadModelButton;
-    private Button cancelModelLoadButton;
-    private TextView textView;
+    private NpuManager npuManager;
 
-    public ModelLoadRequestCallback callback =
-            new ModelLoadRequestCallback() {
-                private NpuManager.ModelLoadStatusListener mListener = null;
+    public static final String ACTION_ON_RESUME =
+            "com.android.npumanager.delegateapp.ACTION_ON_RESUME";
 
-                @Override
-                public void onCanLoadModel(
-                        ModelLoadRequest request,
-                        int status,
-                        NpuManager.ModelLoadStatusListener listener) {
-                    mListener = listener;
-
-                    if (status == NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
-                        Log.w(TAG, "NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW - loading model now");
-                        loadModel();
-                        Log.i(
-                                TAG,
-                                "Finished loading model. Calling notifyModelLoaded() now "
-                                        + "and running NPU inference");
-                        if (mListener != null) {
-                            try {
-                                mListener.notifyModelLoaded(request);
-                            } catch (RemoteException e) {
-                                Log.e(TAG, "RemoteException created");
-                            }
-                        }
-
-                        runNpuInference();
-                    } else {
-                        Log.w(
-                                TAG,
-                                "Status is not NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW. "
-                                        + "Not loading");
-                    }
-                }
-
-                @Override
-                public void onRequestUnloadModel(ModelLoadRequest request) {
-                    unloadModel();
-                    if (mListener != null) {
-                        try {
-                            mListener.notifyModelUnloaded(request);
-                        } catch (RemoteException e) {
-                            Log.e(TAG, "RemoteException created");
-                        }
-                    }
-                }
-
-                @Override
-                public void onModelLoadRequestComplete(ModelLoadRequest request, int status) {
-                    if (status == NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
-                        Log.w(TAG, "Model load request cancelled");
-                    } else if (status == NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE) {
-                        Log.w(TAG, "Model load request complete");
-                    }
-                }
-            };
-
-    public void loadModel() {
-        textView.setText("Loading Model...");
-        try {
-            modelBuffer = loadAssetToByteArray(getAssets(), TEST_TFLITE_MODEL);
-
-            inputBuffer = loadAssetToByteArray(getAssets(), INPUT_DATA_FILE);
-            Log.i(TAG, "Input data " + INPUT_DATA_FILE +
-                    " loaded (" + inputBuffer.length + " bytes).");
-
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to load model", e);
-            textView.setText("Failed to load model: " + e.toString());
-        }
-    }
+    // Run NPU test inference script
+    public static final String RUN_INFERENCE_TOOL_PATH =
+            "/apex/com.android.hardware.npu/bin/run-test-inference";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         npuManager = getApplicationContext().getSystemService(NpuManager.class);
-        loadModelButton = findViewById(R.id.load_model_btn);
-        unloadModelButton = findViewById(R.id.unload_model_btn);
-        textView = findViewById(R.id.text_view_status);
-        cancelModelLoadButton = findViewById(R.id.cancel_model_load_btn);
 
         if (npuManager != null) {
             Log.w(TAG, "NpuManager not null.");
-            textView.setText(
-                    "NpuManager is available. Use buttons below to trigger " + "callbacks");
         } else {
             Log.w(TAG, "NpuManager null. ");
-            textView.setText("NpuManager is null. Make sure NPU is enabled " + "for this device");
-            loadModelButton.setEnabled(false);
-            unloadModelButton.setEnabled(false);
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        Log.w(TAG, "onResume() for : " + getPackageName());
+        Intent intent = new Intent(ACTION_ON_RESUME);
+        intent.putExtra("package", getPackageName());
+        Log.i(
+                TAG,
+                "Sending broadcast: "
+                        + intent
+                        + " with timestamp: "
+                        + intent.getLongExtra("timestamp", 0));
+        sendBroadcast(intent);
+    }
+
+    public boolean checkRunInferenceExists() {
+        return new File(RUN_INFERENCE_TOOL_PATH).exists();
+    }
+
+    private int runTestInference() throws IOException, InterruptedException {
+        Process process = Runtime.getRuntime().exec(RUN_INFERENCE_TOOL_PATH + " --job-priority=1");
+        return process.waitFor();
+    }
+
+    public void requestLoadModel(boolean useNnapi) {
+        ModelLoadRequestCallback callback =
+                new ModelLoadRequestCallback() {
+                    private NpuManager.ModelLoadStatusListener mListener = null;
+
+                    @Override
+                    public void onCanLoadModel(
+                            ModelLoadRequest request,
+                            int status,
+                            NpuManager.ModelLoadStatusListener listener) {
+                        mListener = listener;
+                        if (status == NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            Log.w(TAG, "NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW - loading model now");
+                            if (useNnapi) {
+                                loadNnapiModel();
+                            }
+                            Log.i(
+                                    TAG,
+                                    "Finished loading model. Calling notifyModelLoaded() now "
+                                            + "and running NPU inference");
+                            if (mListener != null) {
+                                try {
+                                    mListener.notifyModelLoaded(request);
+                                } catch (RemoteException e) {
+                                    Log.e(TAG, "RemoteException created");
+                                }
+                            }
+
+                            if (useNnapi) {
+                                runNnapiInference();
+                            } else {
+                                runNpuInference();
+                            }
+                        } else {
+                            Log.w(
+                                    TAG,
+                                    "Status is not NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW. "
+                                            + "Not loading");
+                        }
+                    }
+
+                    @Override
+                    public void onRequestUnloadModel(ModelLoadRequest request) {
+                        Log.w(TAG, "Received onRequestUnloadModel for id: " + request.getId());
+                        if (mListener != null) {
+                            try {
+                                mListener.notifyModelUnloaded(request);
+                            } catch (RemoteException e) {
+                                Log.e(TAG, "RemoteException created");
+                            }
+                        }
+                    }
+
+                    @Override
+                    public void onModelLoadRequestComplete(ModelLoadRequest request, int status) {
+                        if (status == NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
+                            Log.w(TAG, "Model load request cancelled");
+                        } else if (status == NpuManager.NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE) {
+                            Log.w(
+                                    TAG,
+                                    "Model load request complete for id: "
+                                            + request.getId()
+                                            + ", status: "
+                                            + status);
+                        }
+                    }
+                };
+
+        int id = getPackageName().contains("foreground") ? 1 : 2;
         ModelLoadRequest request =
-                new ModelLoadRequest.Builder(54)
+                new ModelLoadRequest.Builder(id)
                         .setSize(NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB)
                         .setPriority(NpuManager.NPU_MODEL_PRIORITY_NORMAL)
                         .build();
-        loadModelButton.setOnClickListener(
-                v -> {
-                    try {
-                        if (npuManager != null) {
-                            Log.w(TAG, "Requesting to load the model now");
-                            textView.setText("Request loading model now");
-                            npuManager.requestCanLoadModel(
-                                    request, callback, Executors.newSingleThreadExecutor());
-                        }
-                    } catch (RemoteException e) {
-                        Log.w(TAG, "Remote exception: " + e);
-                    }
-                });
-
-        cancelModelLoadButton.setOnClickListener(
-                v -> {
-                    try {
-                        if (npuManager != null) {
-                            Log.w(TAG, "Requesting to load the model now");
-                            npuManager.cancelModelLoad(request);
-                        }
-                    } catch (RemoteException e) {
-                        Log.w(TAG, "Remote exception: " + e);
-                    }
-                    ;
-                });
-
-        unloadModelButton.setOnClickListener(
-                v -> {
-                    Log.i(TAG, "Unload Model button clicked.");
-                    callback.onRequestUnloadModel(request);
-                });
+        try {
+            npuManager.requestCanLoadModel(request, callback, Executors.newSingleThreadExecutor());
+        } catch (RemoteException e) {
+            Log.e(TAG, "Could not request load model: ", e);
+        }
     }
 
-    // Release buffers.
-    public void unloadModel() {
-        modelBuffer = null;
-        inputBuffer = null;
-        textView.setText("Model successfully unloaded");
+    public void runNnapiInference() {
+        // Run NNAPI Inference Code.
+        if (modelBuffer != null && inputBuffer != null) {
+            runNnapiInference(modelBuffer, inputBuffer);
+            Intent intent = new Intent(ACTION_INFERENCE_COMPLETE);
+            intent.putExtra("package", getPackageName());
+            sendBroadcast(intent);
+        }
     }
 
     public void runNpuInference() {
-        if (modelBuffer != null && inputBuffer != null) {
-            Log.w(TAG, "Running inference....");
+        Log.w(
+                TAG,
+                "Running inference.... for: "
+                        + (getPackageName().contains("foreground") ? "foreground" : "background")
+                        + " uid="
+                        + myUid());
             long startTimeMs = System.currentTimeMillis();
-            // Run in background thread to avoid blocking UI
-            new Thread(
-                            () -> {
-                                final String result = runInference(modelBuffer, inputBuffer);
+        // Run in background thread to avoid blocking UI
+        new Thread(
+                        () -> {
+                            try {
+                                int exitCode = runTestInference();
+                                Log.i(
+                                        TAG,
+                                        "run-test-inference exited with code: "
+                                                + exitCode
+                                                + " for uid: "
+                                                + myUid());
+                                if (exitCode != 0) {
+                                    Log.e(TAG, "Inference failed. Test will fail");
+                                    return;
+                                }
                                 long finishedTimeMs = System.currentTimeMillis();
                                 long elapsedTimeMs = finishedTimeMs - startTimeMs;
                                 Log.w(
@@ -208,9 +220,8 @@ public class MainActivity extends Activity {
                                                 + finishedTimeMs
                                                 + ", elapsedTimeMs: "
                                                 + elapsedTimeMs
-                                                + ", result "
-                                                + result);
-                                textView.setText("Finished running inference");
+                                                + ", pid: "
+                                                + myPid());
                                 Intent intent = new Intent(ACTION_INFERENCE_COMPLETE);
                                 intent.putExtra("timestamp", finishedTimeMs);
                                 intent.putExtra("package", getPackageName());
@@ -221,11 +232,29 @@ public class MainActivity extends Activity {
                                                 + " with timestamp: "
                                                 + intent.getLongExtra("timestamp", 0));
                                 sendBroadcast(intent);
-                            })
-                    .start();
-        } else {
-            textView.setText("Model not loaded");
-            Log.e(TAG, "Model not loaded");
+                            } catch (IOException | InterruptedException e) {
+                                Log.e(TAG, "Error running test inference. Test will fail");
+                                e.printStackTrace();
+                            }
+                        })
+                .start();
+    }
+
+    public void loadNnapiModel() {
+        try {
+            modelBuffer = loadAssetToByteArray(getAssets(), TEST_TFLITE_MODEL);
+
+            inputBuffer = loadAssetToByteArray(getAssets(), INPUT_DATA_FILE);
+            Log.i(
+                    TAG,
+                    "Input data "
+                            + INPUT_DATA_FILE
+                            + " loaded ("
+                            + inputBuffer.length
+                            + " bytes).");
+
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to load model", e);
         }
     }
 
@@ -249,5 +278,5 @@ public class MainActivity extends Activity {
     }
 
     // Native method to run inference
-    public native String runInference(byte[] modelBuffer, byte[] inputBuffer);
+    public native String runNnapiInference(byte[] modelBuffer, byte[] inputBuffer);
 }

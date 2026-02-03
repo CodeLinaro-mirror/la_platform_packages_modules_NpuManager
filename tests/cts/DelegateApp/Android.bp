@@ -32,7 +32,7 @@ COMMON_STATIC_LIBS = [
 COMMON_JNI_LIBS = ["libnnapidelegateappjni"]
 
 java_defaults {
-    name: "NnapiDelegateAppDefaults",
+    name: "NpuTestAppDefaults",
     srcs: COMMON_SRCS,
     libs: ["framework-npumanager.stubs.module_lib"],
     static_libs: COMMON_STATIC_LIBS,
@@ -44,8 +44,8 @@ java_defaults {
 }
 
 android_test_helper_app {
-    name: "BackgroundNnapiDelegateApp",
-    defaults: ["NnapiDelegateAppDefaults"],
+    name: "BackgroundNpuTestApp",
+    defaults: ["NpuTestAppDefaults"],
     package_name: "com.android.npumanager.delegateapp",
     manifest: "AndroidManifest.xml",
     use_embedded_native_libs: true,
@@ -54,8 +54,8 @@ android_test_helper_app {
 }
 
 android_test_helper_app {
-    name: "ForegroundNnapiDelegateApp",
-    defaults: ["NnapiDelegateAppDefaults"],
+    name: "ForegroundNpuTestApp",
+    defaults: ["NpuTestAppDefaults"],
     package_name: "com.android.npumanager.delegateapp.foreground",
     manifest: "AndroidManifest_variant.xml",
     use_embedded_native_libs: true,
