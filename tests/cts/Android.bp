@@ -60,6 +60,9 @@ android_test {
         "android.test.runner.stubs.system",
         "android.test.base.stubs.system",
     ],
+    jni_libs: [
+        "libctsnpumanager_jni",
+    ],
     srcs: [
         "src/**/*.java",
     ],
@@ -78,6 +81,7 @@ android_test {
         "npumanager-test-utils",
         "androidx.test.uiautomator_uiautomator",
         "androidx.core_core",
+        "nativetesthelper",
     ],
     min_sdk_version: "36",
     sdk_version: "test_current",
