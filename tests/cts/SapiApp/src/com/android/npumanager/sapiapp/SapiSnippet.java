@@ -32,11 +32,11 @@ import com.google.android.mobly.snippet.event.SnippetEvent;
 import com.google.android.mobly.snippet.rpc.AsyncRpc;
 import com.google.android.mobly.snippet.rpc.Rpc;
 
-/** SapiSnippet is a Mobly Snippet class that provides RPCs for the Sapi test app. */
+/** SapiSnippet is a Mobly Snippet class that provides RPCs for the SAPI test app. */
 public class SapiSnippet implements Snippet {
 
     private static MainActivity activity;
-    private static final String TAG = "SapiSnippet";
+    private static final String TAG = "SAPISnippet";
     private final Context context;
     private final UiDevice mDevice =
             UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
@@ -78,7 +78,8 @@ public class SapiSnippet implements Snippet {
     @Rpc(description = "Triggers the rewriteText() function in MainActivity.")
     public void rewriteText() {
         if (activity != null) {
-            activity.rewriteText();
+            Log.w(TAG, "Preparing and starting rewriteText() now");
+            activity.prepareAndStartRewrite();
         } else {
             Log.w(TAG, "rewriteText() failed: MainActivity instance is null.");
         }
