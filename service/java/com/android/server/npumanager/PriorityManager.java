@@ -57,6 +57,7 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
     private static final int ROOT_UID_PRIORITY = 100;
 
     @NonNull private final Context mContext;
+    private boolean mStarted = false;
     private final Object mLock = new Object();
     private final MetricsLogger mMetricsLogger = new MetricsLogger();
 
@@ -90,7 +91,7 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
     public void setScheduling(@Nullable IScheduling scheduling) {
         synchronized (mLock) {
             mScheduling = scheduling;
-            if (mScheduling != null) {
+            if (mScheduling != null && mStarted) {
                 setInitialPriorities();
             }
         }
@@ -116,6 +117,9 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
 
         NpuPackageMonitor npuPackageMonitor = new NpuPackageMonitor();
         npuPackageMonitor.register(mContext, UserHandle.ALL, mContext.getMainThreadHandler());
+
+        setInitialPriorities();
+        mStarted = true;
     }
 
     public void dump(@NonNull PrintWriter pw, @Nullable String[] args) {
