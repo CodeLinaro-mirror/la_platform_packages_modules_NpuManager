@@ -46,8 +46,11 @@ typedef struct ANpuBuffer ANpuBuffer;
  * [ANPUBUFFER_PRIORITY_MIN, ANPUBUFFER_PRIORITY_MAX], inclusive.
  */
 typedef enum ANpuBuffer_Priority : int32_t {
+    /** Introduced in API 37.  */
     ANPUBUFFER_PRIORITY_MIN = 0,
+    /** Introduced in API 37.  */
     ANPUBUFFER_PRIORITY_DEFAULT = 500,
+    /** Introduced in API 37.  */
     ANPUBUFFER_PRIORITY_MAX = 1000,
 } ANpuBuffer_Priority;
 
@@ -57,10 +60,15 @@ typedef enum ANpuBuffer_Priority : int32_t {
  * For input/output buffers, use AHardwareBuffer instead.
  */
 typedef enum ANpuBuffer_Type : int8_t {
+    /** Introduced in API 37.  */
     ANPUBUFFER_TYPE_UNKNOWN,
+    /** Introduced in API 37.  */
     ANPUBUFFER_TYPE_MODEL_EXECUTABLE,
+    /** Introduced in API 37.  */
     ANPUBUFFER_TYPE_MODEL_WEIGHTS,
+    /** Introduced in API 37.  */
     ANPUBUFFER_TYPE_CACHE,
+    /** Introduced in API 37.  */
     ANPUBUFFER_TYPE_AUXILIARY,
 } ANpuBuffer_Type;
 
