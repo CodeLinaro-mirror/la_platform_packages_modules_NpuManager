@@ -18,10 +18,14 @@ package android.npumanager.cts;
 
 import static org.junit.Assert.assertEquals;
 
+import android.content.pm.PackageManager;
 import android.npumanager.ModelLoadRequest;
 import android.npumanager.NpuManager;
 import android.os.Parcel;
+import android.platform.test.annotations.RequiresFlagsEnabled;
 import androidx.test.runner.AndroidJUnit4;
+import com.android.compatibility.common.util.RequiredFeatureRule;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -31,7 +35,12 @@ public class CtsModelLoadRequestTest {
     private static final int TEST_SIZE = NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
     private static final int TEST_PRIORITY = NpuManager.NPU_MODEL_PRIORITY_NORMAL;
 
+    @Rule(order = 0)
+    public RequiredFeatureRule REQUIRES_NPU_RULE =
+            new RequiredFeatureRule(PackageManager.FEATURE_NEURAL_PROCESSING_UNIT);
+
     @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testGetters() {
         ModelLoadRequest request =
                 new ModelLoadRequest.Builder(TEST_ID)
@@ -44,6 +53,7 @@ public class CtsModelLoadRequestTest {
     }
 
     @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testParcelable() {
         ModelLoadRequest request =
                 new ModelLoadRequest.Builder(TEST_ID)

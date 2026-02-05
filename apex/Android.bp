@@ -85,6 +85,10 @@ apex {
     defaults: ["b-launched-apex-module"],
     bootclasspath_fragments: ["com.android.npumanager-bootclasspath-fragment"],
     systemserverclasspath_fragments: ["com.android.npumanager-systemserverclasspath-fragment"],
+    compile_multilib: "both",
+    native_shared_libs: [
+        "libcom.android.npumanager",
+    ],
 }
 
 sdk {
