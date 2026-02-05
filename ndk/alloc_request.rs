@@ -17,16 +17,50 @@
 //! Implements the allocation request type.
 
 use crate::cookie::Cookie;
+use framework_npumanager_aidl::aidl::android::npumanager::{
+    BufferType::BufferType, FileSegment::FileSegment, NpuBufferGetRequest::NpuBufferGetRequest,
+    NpuBufferGetRequest::BUFFER_PRIORITY_DEFAULT, NpuBufferGetRequest::PROT_READ,
+};
 use npumanager_bindings::{
     ANpuBuffer_Type, ANpuManager_AllocCallback, ANpuManager_CookieDeleter,
     ANpuManager_PreemptCallback,
 };
+use std::os::fd::{FromRawFd, OwnedFd};
 use std::sync::Arc;
+
+// Checks that the AIDL constants matches the default values specified in the NDK API.
+// This ensures that the Default::default() of an AIDL type matches the default values specified
+// in the NDK API.
+const _: () = {
+    // Checks that the AIDL constants match the NDK constants.
+    assert!(
+        npumanager_bindings::ANpuBuffer_Priority_ANPUBUFFER_PRIORITY_DEFAULT
+            == BUFFER_PRIORITY_DEFAULT
+    );
+    assert!(npumanager_bindings::ANpuBuffer_Type_ANPUBUFFER_TYPE_UNKNOWN == BufferType::UNKNOWN.0);
+    assert!(
+        npumanager_bindings::ANpuBuffer_Type_ANPUBUFFER_TYPE_MODEL_EXECUTABLE
+            == BufferType::MODEL_EXECUTABLE.0
+    );
+    assert!(
+        npumanager_bindings::ANpuBuffer_Type_ANPUBUFFER_TYPE_MODEL_WEIGHTS
+            == BufferType::MODEL_WEIGHTS.0
+    );
+    assert!(npumanager_bindings::ANpuBuffer_Type_ANPUBUFFER_TYPE_CACHE == BufferType::CACHE.0);
+    assert!(
+        npumanager_bindings::ANpuBuffer_Type_ANPUBUFFER_TYPE_AUXILIARY == BufferType::AUXILIARY.0
+    );
+
+    // Checks that the AIDL protection flags match the libc values.
+    assert!(PROT_READ == libc::PROT_READ);
+};
 
 /// Allocation request.
 pub struct ANpuManager_AllocRequest {
     cookie: Arc<Cookie>,
+    aidl_request: NpuBufferGetRequest,
     on_alloc: ANpuManager_AllocCallback,
+    on_preempt: ANpuManager_PreemptCallback,
 }
 
 impl ANpuManager_AllocRequest {
@@ -52,7 +86,10 @@ pub extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_create() -> *mut ANpu
     let req = Box::new(ANpuManager_AllocRequest {
         // SAFETY: Cookie::new allows deleter to be None.
         cookie: unsafe { Cookie::new(std::ptr::null_mut(), None) },
+        // We have assert!()ed that the default values match.
+        aidl_request: NpuBufferGetRequest::default(),
         on_alloc: None,
+        on_preempt: None,
     });
     // This leaks the raw pointer, which the user takes ownership of.
     Box::into_raw(req)
@@ -121,6 +158,7 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setDeviceNumbe
     request: &mut ANpuManager_AllocRequest,
     deviceNumber: i32,
 ) {
+    request.aidl_request.deviceNumber = deviceNumber;
 }
 
 /// Sets the purpose of the buffer for an allocation request.
@@ -137,6 +175,8 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setBufferType(
     request: &mut ANpuManager_AllocRequest,
     bufferType: ANpuBuffer_Type,
 ) {
+    // We can wrap directly because of the assert!s above.
+    request.aidl_request.bufferType = BufferType(bufferType);
 }
 
 /// Sets the size of the buffer in bytes for an allocation request.
@@ -153,6 +193,7 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setSize(
     request: &mut ANpuManager_AllocRequest,
     size: i64,
 ) {
+    request.aidl_request.size = size;
 }
 
 /// Sets the buffer priority for an allocation request.
@@ -169,6 +210,8 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setBufferPrior
     request: &mut ANpuManager_AllocRequest,
     bufferPriority: i32,
 ) {
+    // Safety: The caller ensures that `request` is a valid pointer.
+    request.aidl_request.bufferPriority = bufferPriority;
 }
 
 /// Sets the file segment to load for an allocation request.
@@ -193,6 +236,19 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setFileSegment
     segmentLength: i64,
     bufferOffset: i64,
 ) {
+    request.aidl_request.fileSegmentToLoad = if fdToOwn < 0 {
+        None
+    } else {
+        Some(FileSegment {
+            // Safety: The caller gives us the ownership of fdToOwn.
+            fileFd: Some(binder::ParcelFileDescriptor::new(unsafe {
+                OwnedFd::from_raw_fd(fdToOwn)
+            })),
+            fileOffset,
+            segmentLength,
+            bufferOffset,
+        })
+    };
 }
 
 /// Sets the protection flags for the buffer.
@@ -203,13 +259,14 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setFileSegment
 ///
 /// # Arguments
 /// * `request` - The allocation request.
-/// * `prot` - The protection flags. Either PROT_NONE, or the bitwise OR of one or more of
+/// * `prot` - The protection flags. Either PROT_READ, or the bitwise OR of one or more of
 ///   PROT_READ, PROT_WRITE, PROT_EXEC.
 #[no_mangle]
 pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setProtectionFlags(
     request: &mut ANpuManager_AllocRequest,
     prot: std::ffi::c_int,
 ) {
+    request.aidl_request.protectionFlags = prot;
 }
 
 /// Sets the allocation callback for an allocation request.
@@ -290,4 +347,5 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setOnPreempt(
     request: &mut ANpuManager_AllocRequest,
     onPreempt: ANpuManager_PreemptCallback,
 ) {
+    request.on_preempt = onPreempt;
 }

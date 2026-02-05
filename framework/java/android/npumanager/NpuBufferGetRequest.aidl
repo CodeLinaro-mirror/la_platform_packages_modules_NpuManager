@@ -28,11 +28,13 @@ import android.npumanager.FileSegment;
 parcelable NpuBufferGetRequest {
     /** A unique request ID chosen by the client. The server rejects duplicate IDs. */
     long appReqId;
-    int deviceNumber;
-    BufferType bufferType;
+    int deviceNumber = -1;
+    BufferType bufferType = BufferType.UNKNOWN;
     long size;
-    int bufferPriority;
+    int bufferPriority = BUFFER_PRIORITY_DEFAULT;
     @nullable FileSegment fileSegmentToLoad;
-    /** Sent to wrapfd driver; protection flags on the wrap. */
-    int protectionFlags;
+    int protectionFlags = PROT_READ;
+
+    const int BUFFER_PRIORITY_DEFAULT = 500;
+    const int PROT_READ = 0x1;
 }
