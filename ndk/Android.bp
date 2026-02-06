@@ -74,6 +74,10 @@ rust_ffi_static {
 
 cc_library_shared {
     name: "libcom.android.npumanager",
+    shared_libs: [
+        "libbinder_ndk",
+        "liblog",
+    ],
     whole_static_libs: ["libnpumanager_rust"],
     export_static_lib_headers: ["libnpumanager_rust"],
     apex_available: ["com.android.npumanager"],
