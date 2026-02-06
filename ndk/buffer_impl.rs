@@ -25,7 +25,7 @@ mod cookie;
 
 use crate::alloc_request::ANpuManager_AllocRequest;
 use errno::{set_errno, Errno};
-use npumanager_bindings::ANpuBuffer;
+use npumanager_bindings::{ANpuBuffer, ANpuManager_LoadCallback};
 
 /// Tests if the provided requests are supported or not.
 ///
@@ -178,4 +178,38 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_setPriority(
 ) -> std::ffi::c_int {
     set_errno(Errno(libc::ENOSYS));
     -1
+}
+
+/// Loads a file into the buffer asynchronously.
+///
+/// # Safety
+/// The user is responsible for providing a valid buffer received from
+/// the `onAlloc` callback and not freed.
+///
+/// # Arguments
+/// * `buf` - The buffer to load into.
+/// * `fdToOwn` - The file descriptor of the file to load. Must be a valid file
+///   descriptor. The ownership of the fd is transferred to ANpuManager.
+/// * `fileOffset` - The offset of the file segment to load, starting from the beginning of the
+///   file.
+/// * `segmentLength` - The length of the file segment to load. Must be non-negative.
+/// * `bufferOffset` - The offset in the buffer to start loading to. Must be non-negative.
+/// * `onLoad` - The callback to be invoked when loading is finished or has encountered an error.
+///   See documentation of ANpuManager_LoadCallback for details about the arguments
+///   when the callback is invoked.
+/// # Returns
+/// 0 on success, or -1 on error with errno set.
+#[no_mangle]
+pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_loadAsync(
+    buf: &mut ANpuBuffer,
+    fdToOwn: i32,
+    fileOffset: i64,
+    segmentLength: i64,
+    bufferOffset: i64,
+    onLoad: ANpuManager_LoadCallback,
+) {
+    let on_load = onLoad.expect("onLoad is null");
+    // SAFETY: TODO: This needs to provide the cookie value associated with the buffer.
+    // However, since allocAsync is not implemented, this is not yet a problem.
+    unsafe { on_load(std::ptr::null_mut(), libc::ENOSYS, buf) };
 }
