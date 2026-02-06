@@ -66,6 +66,7 @@ rust_ffi_static {
         "liberrno",
         "libnpumanager_bindings",
         "liblibc",
+        "framework-npumanager-aidl-rust",
     ],
     apex_available: ["com.android.npumanager"],
     min_sdk_version: "apex_inherit",

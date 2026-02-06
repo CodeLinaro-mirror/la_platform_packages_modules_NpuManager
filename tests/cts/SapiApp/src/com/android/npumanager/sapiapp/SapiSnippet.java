@@ -75,6 +75,14 @@ public class SapiSnippet implements Snippet {
         }
     }
 
+    @Rpc(description = "Returns if rewrite feature is available.")
+    public boolean isFeatureAvailable() {
+        if (activity != null) {
+            return activity.isFeatureAvailable();
+        }
+        return false;
+    }
+
     @Rpc(description = "Triggers the rewriteText() function in MainActivity.")
     public void rewriteText() {
         if (activity != null) {

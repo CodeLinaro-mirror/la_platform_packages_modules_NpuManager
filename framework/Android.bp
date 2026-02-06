@@ -32,3 +32,32 @@ java_sdk_library {
     jarjar_rules: "jarjar-rules.txt",
 
 }
+
+aidl_interface {
+    name: "framework-npumanager-aidl",
+    local_include_dir: "java",
+    include_dirs: [
+        "frameworks/native/aidl/binder",
+    ],
+    srcs: [
+        "java/android/npumanager/*.aidl",
+    ],
+    unstable: true,
+    defaults: ["framework-module-defaults"],
+    backend: {
+        rust: {
+            enabled: true,
+            apex_available: ["com.android.npumanager"],
+            min_sdk_version: "36",
+        },
+        java: {
+            enabled: false,
+        },
+        cpp: {
+            enabled: false,
+        },
+        ndk: {
+            enabled: false,
+        },
+    },
+}

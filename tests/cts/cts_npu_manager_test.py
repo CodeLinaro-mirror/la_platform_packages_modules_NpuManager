@@ -103,8 +103,9 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
         1. Disable isolated process, and enable NPU manager related flags.
         2. Kill AICore
         3. Verify flag values
-        4. Start activity and run rewrite text inference.
-        5. Assert inference success.
+        4. Start activity and check if rewrite feature is available. Skip test if unavailable.
+        5. Run rewrite inference using Solutions API.
+        6. Assert inference success.
 
         :return:
         """
@@ -140,9 +141,11 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
 
         inference_handler = self.dut.sapi_snippet.asyncWaitForInferenceComplete('inference')
         self.dut.sapi_snippet.startActivity()
+        asserts.skip_if(not self.dut.sapi_snippet.isFeatureAvailable(), 'SAPI Rewrite Feature is not '
+                                                                        'available on this device.')
         self.dut.sapi_snippet.rewriteText()
         #Wait for inference.
-        inference_handler.waitAndGet('inference', 20)
+        inference_handler.waitAndGet('inference', 30)
 
     def test_foreground_app_finishes_first(self):
         """

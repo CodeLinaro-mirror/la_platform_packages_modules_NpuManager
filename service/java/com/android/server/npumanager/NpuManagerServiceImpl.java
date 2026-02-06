@@ -34,6 +34,8 @@ import android.hardware.npu.ISchedulingCallback;
 import android.hardware.npu.StartReason;
 import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
+import android.npumanager.INpuAllocator;
+import android.npumanager.INpuAllocatorCallback;
 import android.npumanager.INpuManagerService;
 import android.npumanager.ModelLoadRequest;
 import android.npumanager.ModelLoadRequestParcelable;
@@ -268,6 +270,12 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
                     };
         }
         Trace.endSection();
+    }
+
+    @Override
+    @RequiresNoPermission
+    public INpuAllocator createAllocator(INpuAllocatorCallback callback) {
+        throw new UnsupportedOperationException("Not implemented yet");
     }
 
     @Override

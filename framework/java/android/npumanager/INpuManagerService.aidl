@@ -17,6 +17,8 @@
 package android.npumanager;
 
 import android.npumanager.IModelLoadCallback;
+import android.npumanager.INpuAllocator;
+import android.npumanager.INpuAllocatorCallback;
 import android.npumanager.ModelLoadRequestParcelable;
 import android.os.PersistableBundle;
 
@@ -35,4 +37,7 @@ interface INpuManagerService {
     void notifyModelUnloaded(in ModelLoadRequestParcelable request);
     @PermissionManuallyEnforced
     void setPolicy(int policy, in PersistableBundle policyParams);
+
+    /** For memory management. */
+    INpuAllocator createAllocator(INpuAllocatorCallback callback);
 }
