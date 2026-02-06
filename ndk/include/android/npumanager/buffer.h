@@ -79,6 +79,11 @@ typedef struct ANpuManager_AllocRequest ANpuManager_AllocRequest;
 /**
  * Callback function type when allocation and load is done.
  *
+ * The callback is invoked in response to ANpuManager_allocAsync(). Even when
+ * the request has `ANpuManager_AllocRequest_setFileSegmentToLoad()`, indicating
+ * that a file is to be loaded into the buffer, this callback is still used to
+ * indicate that the load is complete (or failed), not ANpuManager_LoadCallback.
+ *
  * The callback may be invoked on any thread, including the current thread
  * immediately inside ANpuManager_allocAsync() if an error is immediately
  * detected.
@@ -134,6 +139,22 @@ typedef void (*ANpuManager_AllocCallback)(void* _Nullable borrowedCookie, int er
  *        ANpuManager_AllocRequest_setCookie(), or NULL if not set.
  */
 typedef void (*ANpuManager_PreemptCallback)(void* _Nullable borrowedCookie);
+
+/**
+ * Callback function type for buffer load.
+ *
+ * NpuManager calls this function when the buffer load is done or has encountered an error.
+ *
+ * This callback is invoked in response to ANpuBuffer_loadAsync(), NOT to ANpuManager_allocAsync().
+ *
+ * \param borrowedCookie The user cookie previously set by
+ *        ANpuManager_AllocRequest_setCookie(), or NULL if not set.
+ * \param errorNum 0 if successful, or an errno on error.
+ * \param buf The buffer. This is the same buffer passed to ANpuBuffer_loadAsync(), even if
+ *        loading fails.
+ */
+typedef void (*ANpuManager_LoadCallback)(void* _Nullable borrowedCookie, int errorNum,
+                                         ANpuBuffer* _Nonnull buf);
 
 /**
  * Callback function type to delete the user cookie.
@@ -556,6 +577,28 @@ int ANpuBuffer_unmap(ANpuBuffer* _Nonnull buf, void* _Nonnull addr, size_t lengt
  * \return 0 on success, or -1 on error with errno set.
  */
 int ANpuBuffer_setPriority(ANpuBuffer* _Nonnull buf, int32_t newBufferPriority) __INTRODUCED_IN(37);
+
+/**
+ * Loads a file into the buffer asynchronously.
+ *
+ * Available since API level 37.
+ *
+ * \param buf The buffer to load into.
+ * \param fdToOwn The file descriptor of the file to load. Must be a valid file
+ *           descriptor. The ownership of the fd is transferred to ANpuManager.
+ * \param fileOffset The offset of the file segment to load, starting from the beginning of the
+ *           file.
+ * \param segmentLength The length of the file segment to load. Must be non-negative.
+ * \param bufferOffset The offset in the buffer to start loading to. Must be non-negative.
+ * \param onLoad The callback to be invoked when loading is finished or has encountered an error.
+ *        See documentation of ANpuManager_LoadCallback for details about the arguments
+ *        when the callback is invoked.
+ *
+ *        This must be non-NULL. Otherwise, the process will crash.
+ */
+void ANpuBuffer_loadAsync(ANpuBuffer* _Nonnull buf, int fdToOwn, int64_t fileOffset,
+                          int64_t segmentLength, int64_t bufferOffset,
+                          ANpuManager_LoadCallback _Nonnull onLoad) __INTRODUCED_IN(37);
 
 __END_DECLS
 
