@@ -45,6 +45,7 @@ rust_bindgen {
         "--allowlist-type=ANpuBuffer_Type",
         "--allowlist-type=ANpuManager_AllocCallback",
         "--allowlist-type=ANpuManager_PreemptCallback",
+        "--allowlist-type=ANpuManager_LoadCallback",
         "--allowlist-type=ANpuManager_CookieDeleter",
     ],
     apex_available: ["com.android.npumanager"],
@@ -74,6 +75,10 @@ rust_ffi_static {
 
 cc_library_shared {
     name: "libcom.android.npumanager",
+    shared_libs: [
+        "libbinder_ndk",
+        "liblog",
+    ],
     whole_static_libs: ["libnpumanager_rust"],
     export_static_lib_headers: ["libnpumanager_rust"],
     apex_available: ["com.android.npumanager"],

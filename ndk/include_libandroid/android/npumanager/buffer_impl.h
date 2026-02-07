@@ -82,6 +82,11 @@ int ANpuManagerImpl_ANpuBuffer_unmap(ANpuBuffer* _Nonnull buf, void* _Nonnull ad
 int ANpuManagerImpl_ANpuBuffer_setPriority(ANpuBuffer* _Nonnull buf, int32_t newBufferPriority)
         __INTRODUCED_IN(37);
 
+void ANpuManagerImpl_ANpuBuffer_loadAsync(ANpuBuffer* _Nonnull buf, int fdToOwn, int64_t fileOffset,
+                                          int64_t segmentLength, int64_t bufferOffset,
+                                          ANpuManager_LoadCallback _Nonnull onLoad)
+        __INTRODUCED_IN(37);
+
 __END_DECLS
 
 #endif  // ANDROID_NPUMANAGER_BUFFER_IMPL_H

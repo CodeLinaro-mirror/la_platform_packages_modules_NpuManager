@@ -24,6 +24,7 @@ cc_test_library {
     srcs: ["android_npumanager_cts_CtsNpuManagerBufferTest.cpp"],
     shared_libs: [
         "libandroid",
+        "liblog",
     ],
     static_libs: [
         "libbase_ndk",
