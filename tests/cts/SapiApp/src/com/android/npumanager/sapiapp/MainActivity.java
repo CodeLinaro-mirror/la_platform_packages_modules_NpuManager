@@ -63,6 +63,17 @@ public class MainActivity extends Activity {
         rewriter = Rewriting.getClient(options);
     }
 
+    public boolean isFeatureAvailable() {
+        int featureStatus;
+        try {
+            featureStatus = rewriter.checkFeatureStatus().get();
+        } catch (ExecutionException | InterruptedException e) {
+            Log.e(TAG, "Error", e);
+            return false;
+        }
+        return featureStatus != FeatureStatus.UNAVAILABLE;
+    }
+
     public void prepareAndStartRewrite() {
         try {
             int featureStatus = rewriter.checkFeatureStatus().get();
