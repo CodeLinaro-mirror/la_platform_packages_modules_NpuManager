@@ -164,4 +164,11 @@ int ANpuBuffer_setPriority(ANpuBuffer* _Nonnull buf, int32_t newBufferPriority) 
     return symbol(buf, newBufferPriority);
 }
 
+void ANpuBuffer_loadAsync(ANpuBuffer* _Nonnull buf, int fdToOwn, int64_t fileOffset,
+                          int64_t segmentLength, int64_t bufferOffset,
+                          ANpuManager_LoadCallback _Nonnull onLoad) {
+    static auto symbol = LOAD_SYMBOL(ANpuManagerImpl_ANpuBuffer_loadAsync);
+    symbol(buf, fdToOwn, fileOffset, segmentLength, bufferOffset, onLoad);
+}
+
 #undef LOAD_SYMBOL
