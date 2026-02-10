@@ -21,7 +21,8 @@ package {
 
 cc_test_library {
     name: "libctsnpumanager_jni",
-    srcs: ["android_npumanager_cts_CtsNpuManagerBufferTest.cpp"],
+    // TODO: b/481533812 - re-enable once libnpumanager is added back to libandroid
+    // srcs: ["android_npumanager_cts_CtsNpuManagerBufferTest.cpp"],
     shared_libs: [
         "libandroid",
         "liblog",
