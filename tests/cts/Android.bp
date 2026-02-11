@@ -60,9 +60,10 @@ android_test {
         "android.test.runner.stubs.system",
         "android.test.base.stubs.system",
     ],
-    jni_libs: [
-        "libctsnpumanager_jni",
-    ],
+    // TODO: b/481533812 - re-enable when libandroid can dlopen libcom.android.npumanager
+    // jni_libs: [
+    //    "libctsnpumanager_jni",
+    // ],
     srcs: [
         "src/**/*.java",
     ],
