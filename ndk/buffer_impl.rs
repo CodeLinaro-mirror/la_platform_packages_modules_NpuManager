@@ -73,12 +73,10 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_isSupported(
 
     match NpuManagerDelegate::get_instance() {
         Ok(delegate) => delegate.is_supported(requests_refs, results_slice),
-        // If there is any error (e.g. no NpuManagerService, NpuManagerService can't
-        // provide an allocator because the DMA buf heap config cannot be parsed, etc.),
-        // propagate the error.
-        Err(e) => {
-            set_errno(Errno(*e));
-            -1
+        // If there is no NpuManager service, assume nothing is supported.
+        Err(_) => {
+            results_slice.fill(false);
+            0
         }
     }
 }
