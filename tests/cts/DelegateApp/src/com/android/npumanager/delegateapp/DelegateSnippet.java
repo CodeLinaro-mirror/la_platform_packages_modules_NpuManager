@@ -21,7 +21,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.util.Log;
+
 import androidx.test.platform.app.InstrumentationRegistry;
+
 import com.google.android.mobly.snippet.Snippet;
 import com.google.android.mobly.snippet.event.EventCache;
 import com.google.android.mobly.snippet.event.SnippetEvent;
@@ -48,6 +50,25 @@ public class DelegateSnippet implements Snippet {
                         eventName,
                         MainActivity.ACTION_INFERENCE_COMPLETE),
                 new IntentFilter(MainActivity.ACTION_INFERENCE_COMPLETE),
+                Context.RECEIVER_EXPORTED);
+    }
+
+    @Rpc(description = "Request can load model")
+    public void requestCanLoadModel(boolean useNnapi) {
+        if (activity != null) {
+            activity.requestLoadModel(useNnapi);
+        }
+    }
+
+    @AsyncRpc(description = "Wait for indication that the inference is complete")
+    public void asyncWaitForAppResume(String callbackId, String eventName) {
+        context.registerReceiver(
+                new SnippetBroadcastReceiver(
+                        context,
+                        new SnippetEvent(callbackId, eventName),
+                        eventName,
+                        MainActivity.ACTION_ON_RESUME),
+                new IntentFilter(MainActivity.ACTION_ON_RESUME),
                 Context.RECEIVER_EXPORTED);
     }
 
@@ -90,6 +111,14 @@ public class DelegateSnippet implements Snippet {
                 .start();
     }
 
+    @Rpc(description = "Check if run inference tool exists")
+    public boolean checkRunInferenceExists() {
+        if (activity != null) {
+            return activity.checkRunInferenceExists();
+        }
+        return false;
+    }
+
     /** BroadcastReceiver subclass that posts SnippetEvent when intent is received. */
     public static class SnippetBroadcastReceiver extends BroadcastReceiver {
         private static final String TAG = "SnippetBroadcastReceiver";
@@ -115,7 +144,7 @@ public class DelegateSnippet implements Snippet {
 
                 String packageName = intent.getStringExtra("package");
                 String intendedPackage =
-                        mEvent.getName().equals("background")
+                        mEvent.getName().contains("background")
                                 ? "com.android.npumanager.delegateapp"
                                 : "com.android.npumanager.delegateapp.foreground";
 

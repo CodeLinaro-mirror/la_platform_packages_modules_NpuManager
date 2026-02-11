@@ -38,6 +38,11 @@ _AICORE_ENABLE_NPU_INTEGRATION_FLAG ='AicCommon__enable_npu_manager_integration'
 _MACHINE_LEARNING_NAMESPACE = 'machine_learning'
 _AICORE_NAMESPACE = 'aicore'
 
+
+def _is_cuttlefish_device(ad: android_device.AndroidDevice) -> bool:
+    product_name = ad.adb.getprop("ro.product.name")
+    return "cf_x86" in product_name
+
 class CtsNpuManagerTest(base_test.BaseTestClass):
 
     def setup_class(self):
@@ -153,28 +158,44 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
         inference is triggered first. Tests that the foreground app finishes its inference first.
 
         Test Steps:
-        1. Start first app (background) and run an NPU inference on it.
-        2. Start second app (foreground) and run an NPU inference on it.
-        3. Ensure that both apps finish their inferences.
-        4. Ensure that the foreground app finishes its inference first.
+        1. Set NPU Manager to use budget policy.
+        2. Start background app, and wait for onResume().
+        3. Start foreground app, and wait for onResume().
+        4. Request model loads for both background and foreground apps, which will trigger
+        test inferences on each app.
+        5. Wait for both inferences to complete.
+        6. Ensure both inferences complete, and that the foreground inference (with higher priority)
+        finishes first.
         :return:
         """
-        asserts.skip("Disabling this test until b/476377913 is complete.")
-        asserts.skip_if(not self.npu_manager_enabled,
-                        'NpuManager flag must be enabled for this test.')
+        # TODO (b/479241012): remove this when run-test-inference is implemented for non-CF devices.
+        asserts.skip_if(not _is_cuttlefish_device(ad=self.dut), 'Skipping the test for non-Cuttlefish devices.')
+        asserts.skip_if(not self._get_device_config(_MACHINE_LEARNING_NAMESPACE, _NPU_MANAGER_ENABLED_FLAG),
+                        f"{_NPU_MANAGER_ENABLED_FLAG} must be enabled for this test.")
 
+        app_resume_background_handler = self.dut.background_delegate_snippet.asyncWaitForAppResume(
+        'resume_background'
+        )
+        app_resume_foreground_handler = self.dut.foreground_delegate_snippet.asyncWaitForAppResume(
+        'resume_foreground'
+        )
         inference_handler_background =  self.dut.background_delegate_snippet.asyncWaitForInferenceComplete(
             'background'
         )
-        inference_handler_foreground =  self.dut.foreground_delegate_snippet.asyncWaitForInferenceComplete(
+        inference_handler_foreground =  self.dut.background_delegate_snippet.asyncWaitForInferenceComplete(
             'foreground'
         )
-
+        self.dut.adb.shell("cmd npu set-budget-policy")
         self.dut.background_delegate_snippet.startActivity()
-        self.dut.background_delegate_snippet.runNpuInference()
-
+        app_resume_background_handler.waitAndGet('resume_background', 15)
+        asserts.assert_true(self.dut.background_delegate_snippet.checkRunInferenceExists(),
+                            "Run inference tool could not be found")
         self.dut.foreground_delegate_snippet.startActivity()
-        self.dut.foreground_delegate_snippet.runNpuInference()
+        asserts.assert_true(self.dut.foreground_delegate_snippet.checkRunInferenceExists(),
+                            "Run inference tool could not be found")
+        app_resume_foreground_handler.waitAndGet('resume_foreground', 15)
+        self.dut.background_delegate_snippet.requestCanLoadModel(False)
+        self.dut.foreground_delegate_snippet.requestCanLoadModel(False)
 
         event_background = inference_handler_background.waitAndGet('background', 15)
         event_foreground = inference_handler_foreground.waitAndGet('foreground', 15)

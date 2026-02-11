@@ -23,14 +23,14 @@
 
 #define LOG_TAG "NnapiDelegateAppJNI"
 extern "C" JNIEXPORT jstring JNICALL
-
 #define ALOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define ALOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 
-Java_com_android_npumanager_delegateapp_MainActivity_runInference(
-        JNIEnv* env, jobject /* this */, jbyteArray model_buffer,
-        jbyteArray input_buffer) {
+Java_com_android_npumanager_delegateapp_MainActivity_runNnapiInference(JNIEnv* env,
+                                                                       jobject /* this */,
+                                                                       jbyteArray model_buffer,
+                                                                       jbyteArray input_buffer) {
 
     if (model_buffer == nullptr) {
         ALOGE("Model buffer is null");
