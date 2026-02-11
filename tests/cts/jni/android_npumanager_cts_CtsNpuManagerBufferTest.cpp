@@ -318,18 +318,6 @@ class CtsNpuManagerBufferTest : public ::testing::TestWithParam<TestParam> {
                             segment.file_segment_length));
     }
 
-    auto MapBuffer(ANpuBuffer* buffer) {
-        const auto& param = GetParam();
-        return std::unique_ptr<void, std::function<void(void*)>>(
-                ANpuBuffer_map(buffer, nullptr, param.size, PROT_READ, MAP_SHARED, 0),
-                [&](void* mapped) {
-                    if (mapped != MAP_FAILED) {
-                        EXPECT_EQ(0, ANpuBuffer_unmap(buffer, mapped, param.size))
-                                << "ANpuBuffer_unmap failed with errno: " << strerror(errno);
-                    }
-                });
-    }
-
     std::unique_ptr<TemporaryFile> load_on_alloc;
     std::unique_ptr<TemporaryFile> load_later;
 };
@@ -362,17 +350,6 @@ TEST_P(CtsNpuManagerBufferTest, SingleBuffer) {
     ANpuManager_AllocRequest* requests[] = {req.get()};
     bool isSupported = false;
     int ret = ANpuManager_isSupported(requests, 1, &isSupported);
-    // On legacy devices, the wrapfd driver might not be present, so the error will be ENOSYS.
-    if (errno == ENOSYS) {
-        auto wrapfd_driver =
-                android::base::unique_fd(TEMP_FAILURE_RETRY(open("/dev/wrapfd", O_RDONLY)));
-        // TODO: b/466107663 - Drop EACESS once sepolicy is in place
-        if (wrapfd_driver.get() == -1 && (errno == ENOENT || errno == EACCES)) {
-            // TODO: b/479028987 - Use GTEST_SKIP().
-            // GTEST_SKIP() << "ANpuManager is not supported on this device: " << strerror(errno);
-            return;
-        }
-    }
     ASSERT_EQ(0, ret) << "ANpuManager_isSupported failed with errno: " << strerror(errno);
     if (!isSupported) {
         // TODO: b/479028987 - Use GTEST_SKIP().
@@ -399,16 +376,22 @@ TEST_P(CtsNpuManagerBufferTest, SingleBuffer) {
                 EXPECT_EQ(0, ANpuBuffer_free(buffers, 1));
             });
 
-    // check map succeeds and content matches load_on_alloc
-    {
-        auto mapped = MapBuffer(result->buffer);
-        if (mapped.get() == MAP_FAILED) {
-            ADD_FAILURE() << "ANpuBuffer_map failed with errno: " << strerror(errno);
-        } else if (load_on_alloc != nullptr) {
-            CheckFileSegment(param.load_on_alloc, load_on_alloc->fd, mapped.get());
-        }
-        // Calls ANpuBuffer_unmap and see if that succeeds.
+    auto mapped = std::unique_ptr<void, std::function<void(void*)>>(
+            ANpuBuffer_map(result->buffer, nullptr, param.size, PROT_READ, MAP_SHARED, 0),
+            [&](void* mapped) {
+                if (mapped != MAP_FAILED) {
+                    EXPECT_EQ(0, ANpuBuffer_unmap(buffer.get(), mapped, param.size))
+                            << "ANpuBuffer_unmap failed with errno: " << strerror(errno);
+                }
+            });
+    EXPECT_NE(MAP_FAILED, mapped.get()) << "ANpuBuffer_map failed with errno: " << strerror(errno);
+
+    if (load_on_alloc != nullptr) {
+        CheckFileSegment(param.load_on_alloc, load_on_alloc->fd, mapped.get());
     }
+
+    // Calls ANpuBuffer_unmap and see if that succeeds.
+    mapped.reset();
 
     if (load_later != nullptr) {
         auto load_later_orig_pos = lseek(load_later->fd, 0, SEEK_CUR);
@@ -421,15 +404,7 @@ TEST_P(CtsNpuManagerBufferTest, SingleBuffer) {
         ASSERT_TRUE(load_result.has_value()) << "Timed out waiting for load callback";
         EXPECT_EQ(0, *load_result)
                 << "ANpuBuffer_loadAsync failed with errno: " << strerror(*load_result);
-
-        // check content matches load_later
-        auto mapped = MapBuffer(result->buffer);
-        if (mapped.get() == MAP_FAILED) {
-            ADD_FAILURE() << "ANpuBuffer_map failed with errno: " << strerror(errno);
-        } else {
-            CheckFileSegment(param.load_later, load_later->fd, mapped.get());
-        }
-
+        CheckFileSegment(param.load_later, load_later->fd, mapped.get());
         EXPECT_EQ(load_later_orig_pos, lseek(load_later->fd, 0, SEEK_CUR))
                 << "file fd pos should not change after load: " << strerror(errno);
     }

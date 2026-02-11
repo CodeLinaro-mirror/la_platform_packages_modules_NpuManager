@@ -589,8 +589,6 @@ int ANpuBuffer_setPriority(ANpuBuffer* _Nonnull buf, int32_t newBufferPriority) 
  * \param buf The buffer to load into.
  * \param fdToOwn The file descriptor of the file to load. Must be a valid file
  *           descriptor. The ownership of the fd is transferred to ANpuManager.
- *
- *           The position of the associated file description is not changed by this function.
  * \param fileOffset The offset of the file segment to load, starting from the beginning of the
  *           file.
  * \param segmentLength The length of the file segment to load. Must be non-negative.
