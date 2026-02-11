@@ -390,6 +390,9 @@ TEST_P(CtsNpuManagerBufferTest, SingleBuffer) {
         CheckFileSegment(param.load_on_alloc, load_on_alloc->fd, mapped.get());
     }
 
+    // Calls ANpuBuffer_unmap and see if that succeeds.
+    mapped.reset();
+
     if (load_later != nullptr) {
         auto load_later_orig_pos = lseek(load_later->fd, 0, SEEK_CUR);
         android::base::unique_fd duped(dup(load_later->fd));
@@ -405,9 +408,6 @@ TEST_P(CtsNpuManagerBufferTest, SingleBuffer) {
         EXPECT_EQ(load_later_orig_pos, lseek(load_later->fd, 0, SEEK_CUR))
                 << "file fd pos should not change after load: " << strerror(errno);
     }
-
-    // Calls ANpuBuffer_unmap and see if that succeeds.
-    mapped.reset();
 
     // Calls ANpuBuffer_free and see if that succeeds.
     buffer.reset();

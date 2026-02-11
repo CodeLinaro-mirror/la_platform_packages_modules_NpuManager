@@ -581,6 +581,9 @@ int ANpuBuffer_setPriority(ANpuBuffer* _Nonnull buf, int32_t newBufferPriority) 
 /**
  * Loads a file into the buffer asynchronously.
  *
+ * There should not be any existing mapping (via ANpuBuffer_map()) to the buffer. Otherwise,
+ * the callback is replied with an error.
+ *
  * Available since API level 37.
  *
  * \param buf The buffer to load into.
