@@ -85,6 +85,7 @@ android_test {
     ],
     min_sdk_version: "36",
     sdk_version: "test_current",
+    compile_multilib: "both",
     data: [
         ":CtsNpuManagerTestAppA",
         ":CtsNpuManagerTestAppB",

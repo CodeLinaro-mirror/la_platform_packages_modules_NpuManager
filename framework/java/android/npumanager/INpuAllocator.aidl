@@ -16,6 +16,7 @@
 
 package android.npumanager;
 
+import android.npumanager.FileSegment;
 import android.npumanager.INpuAllocatorCallback;
 import android.npumanager.NpuBufferGetRequest;
 
@@ -56,4 +57,9 @@ interface INpuAllocator {
      * Adjust the priority of a buffer.
      */
     void setPriority(in long appReqId, in int newBufferPriority);
+
+    /**
+     * Loads a file segment into a buffer.
+     */
+    void loadFileSegmentToBuffer(in long appReqId, in FileSegment fileSegment);
 }

@@ -26,6 +26,12 @@ oneway interface INpuAllocatorCallback {
             in int errno, in @nullable String errMsg);
 
     /**
+     * Called when the file segment is loaded to the buffer. Note: Not called
+     * as part of the getBuffers() request.
+     */
+    void onLoad(in long appReqId, in int errno, in @nullable String errMsg);
+
+    /**
      * Called when the buffer is preempted.
      */
     void onNotifyPreempted(in long appReqId);
