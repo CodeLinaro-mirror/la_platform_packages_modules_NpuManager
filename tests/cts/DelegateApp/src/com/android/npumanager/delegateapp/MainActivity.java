@@ -42,6 +42,8 @@ public class MainActivity extends Activity {
     private static final String INPUT_DATA_FILE = "panda.ndarray";
     public static final String ACTION_INFERENCE_COMPLETE = "com.android.npumanager.delegateapp."
             + "ACTION_INFERENCE_COMPLETE";
+    public static final String ACTION_INFERENCE_FAILED =
+            "com.android.npumanager.delegateapp." + "ACTION_INFERENCE_FAILED";
 
     private byte[] modelBuffer = null;
 
@@ -184,13 +186,8 @@ public class MainActivity extends Activity {
     }
 
     public void runNpuInference() {
-        Log.w(
-                TAG,
-                "Running inference.... for: "
-                        + (getPackageName().contains("foreground") ? "foreground" : "background")
-                        + " uid="
-                        + myUid());
-            long startTimeMs = System.currentTimeMillis();
+        Log.w(TAG, "Running inference.... for: " + getPackageName() + " uid=" + myUid());
+        long startTimeMs = System.currentTimeMillis();
         // Run in background thread to avoid blocking UI
         new Thread(
                         () -> {
@@ -203,7 +200,10 @@ public class MainActivity extends Activity {
                                                 + " for uid: "
                                                 + myUid());
                                 if (exitCode != 0) {
-                                    Log.e(TAG, "Inference failed. Test will fail");
+                                    Log.e(TAG, "Inference failed.");
+                                    Intent intent = new Intent(ACTION_INFERENCE_FAILED);
+                                    intent.putExtra("package", getPackageName());
+                                    sendBroadcast(intent);
                                     return;
                                 }
                                 long finishedTimeMs = System.currentTimeMillis();
@@ -233,8 +233,7 @@ public class MainActivity extends Activity {
                                                 + intent.getLongExtra("timestamp", 0));
                                 sendBroadcast(intent);
                             } catch (IOException | InterruptedException e) {
-                                Log.e(TAG, "Error running test inference. Test will fail");
-                                e.printStackTrace();
+                                Log.e(TAG, "Error running test inference. Test might fail", e);
                             }
                         })
                 .start();

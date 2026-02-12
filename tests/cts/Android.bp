@@ -38,6 +38,7 @@ python_test_host {
         ":BackgroundNpuTestApp",
         ":ForegroundNpuTestApp",
         ":SapiApp",
+        ":NoFeatureNpuTestApp",
     ],
 
     test_suites: [

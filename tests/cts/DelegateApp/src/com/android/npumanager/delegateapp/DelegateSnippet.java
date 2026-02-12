@@ -42,14 +42,30 @@ public class DelegateSnippet implements Snippet {
     }
 
     @AsyncRpc(description = "Wait for indication that the inference is complete")
-    public void asyncWaitForInferenceComplete(String callbackId, String eventName) {
+    public void asyncWaitForInferenceComplete(
+            String callbackId, String eventName, String packageName) {
         context.registerReceiver(
                 new SnippetBroadcastReceiver(
                         context,
                         new SnippetEvent(callbackId, eventName),
                         eventName,
-                        MainActivity.ACTION_INFERENCE_COMPLETE),
+                        MainActivity.ACTION_INFERENCE_COMPLETE,
+                        packageName),
                 new IntentFilter(MainActivity.ACTION_INFERENCE_COMPLETE),
+                Context.RECEIVER_EXPORTED);
+    }
+
+    @AsyncRpc(description = "Wait for indication that the inference failed")
+    public void asyncWaitForInferenceFailed(
+            String callbackId, String eventName, String packageName) {
+        context.registerReceiver(
+                new SnippetBroadcastReceiver(
+                        context,
+                        new SnippetEvent(callbackId, eventName),
+                        eventName,
+                        MainActivity.ACTION_INFERENCE_FAILED,
+                        packageName),
+                new IntentFilter(MainActivity.ACTION_INFERENCE_FAILED),
                 Context.RECEIVER_EXPORTED);
     }
 
@@ -60,14 +76,15 @@ public class DelegateSnippet implements Snippet {
         }
     }
 
-    @AsyncRpc(description = "Wait for indication that the inference is complete")
-    public void asyncWaitForAppResume(String callbackId, String eventName) {
+    @AsyncRpc(description = "Wait for indication that the app is resumed")
+    public void asyncWaitForAppResume(String callbackId, String eventName, String packageName) {
         context.registerReceiver(
                 new SnippetBroadcastReceiver(
                         context,
                         new SnippetEvent(callbackId, eventName),
                         eventName,
-                        MainActivity.ACTION_ON_RESUME),
+                        MainActivity.ACTION_ON_RESUME,
+                        packageName),
                 new IntentFilter(MainActivity.ACTION_ON_RESUME),
                 Context.RECEIVER_EXPORTED);
     }
@@ -93,21 +110,25 @@ public class DelegateSnippet implements Snippet {
     @Rpc(description = "Triggers the runInference function in MainActivity.")
     public void runNpuInference() {
         new Thread(
-                () -> {
-                    if (activity != null) {
-                        Log.i(TAG, "MainActivity instance found, posting runNpuInference to "
-                                + "main thread.");
-                        try {
-                            activity.runNpuInference();
-                            Log.i(TAG, "runNpuInference execution posted.");
+                        () -> {
+                            if (activity != null) {
+                                Log.i(
+                                        TAG,
+                                        "MainActivity instance found, posting runNpuInference to "
+                                                + "main thread.");
+                                try {
+                                    activity.runNpuInference();
+                                    Log.i(TAG, "runNpuInference execution posted.");
 
-                        } catch (Exception e) {
-                            Log.e(TAG, "Exception while running runNpuInference", e);
-                        }
-                    } else {
-                        Log.w(TAG, "runNpuInference failed: MainActivity instance is null.");
-                    }
-                })
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Exception while running runNpuInference", e);
+                                }
+                            } else {
+                                Log.w(
+                                        TAG,
+                                        "runNpuInference failed: MainActivity instance is null.");
+                            }
+                        })
                 .start();
     }
 
@@ -127,14 +148,20 @@ public class DelegateSnippet implements Snippet {
         private final EventCache mEventCache;
         private final String eventName;
         private final String mAction;
+        private final String mPackageName;
 
         public SnippetBroadcastReceiver(
-                Context context, SnippetEvent event, String eventName, String action) {
+                Context context,
+                SnippetEvent event,
+                String eventName,
+                String action,
+                String packageName) {
             this.eventName = eventName;
             mEvent = event;
             mContext = context;
             mEventCache = EventCache.getInstance();
             mAction = action;
+            mPackageName = packageName;
         }
 
         @Override
@@ -143,13 +170,14 @@ public class DelegateSnippet implements Snippet {
                 Log.d(TAG, "Received intent: " + mAction);
 
                 String packageName = intent.getStringExtra("package");
-                String intendedPackage =
-                        mEvent.getName().contains("background")
-                                ? "com.android.npumanager.delegateapp"
-                                : "com.android.npumanager.delegateapp.foreground";
 
-                if (packageName == null || !packageName.equals(intendedPackage)) {
-                    Log.d(TAG, "Received intent from package: that is incorrect. return");
+                if (packageName == null || !packageName.equals(mPackageName)) {
+                    Log.d(
+                            TAG,
+                            "Received intent from package: "
+                                    + packageName
+                                    + " which is incorrect. Expected: "
+                                    + mPackageName);
                     return;
                 }
 

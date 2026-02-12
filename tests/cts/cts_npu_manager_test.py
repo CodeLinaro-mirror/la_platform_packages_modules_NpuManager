@@ -30,6 +30,8 @@ _BACKGROUND_APP_PACKAGE_NAME = (
 _FOREGROUND_APP_PACKAGE_NAME = (
     'com.android.npumanager.delegateapp.foreground'
 )
+_NO_FEATURE_APP_PACKAGE_NAME = 'com.android.npumanager.delegateapp.nofeature'
+
 #For end to end AI core testing
 _NPU_MANAGER_ENABLED_FLAG = 'com.android.npumanager.npumanager_enabled'
 _SAPI_APP_PACKAGE_NAME = 'com.android.npumanager.sapiapp'
@@ -62,13 +64,19 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
             _FOREGROUND_APP_PACKAGE_NAME,
         )
         self.dut.load_snippet(
+            'no_feature_snippet',
+            _NO_FEATURE_APP_PACKAGE_NAME,
+        )
+        self.dut.load_snippet(
             'sapi_snippet',
             _SAPI_APP_PACKAGE_NAME
         )
+        self.dut.adb.shell("setenforce 0")
 
     def teardown_test(self):
         self.dut.background_delegate_snippet.closeActivity()
         self.dut.foreground_delegate_snippet.closeActivity()
+        self.dut.no_feature_snippet.closeActivity()
         self.dut.sapi_snippet.closeActivity()
 
     def _override_device_config(
@@ -99,6 +107,48 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
         if output == "false":
             return False
         return output
+
+    def test_cant_access_npu_without_hardware_feature(self):
+        """
+        Tests that an app without the NPU hardware feature cannot access the NPU.
+        1. Start an app that does not have the <uses-feature android:name="android.hardware.npu">
+        in its manifest.
+        2. Verify that it cannot run an inference.
+        3. Start an app that does have the feature.
+        4. Verify that it can run an inference.
+        """
+        asserts.skip_if(not self._get_device_config(_MACHINE_LEARNING_NAMESPACE, _NPU_MANAGER_ENABLED_FLAG),
+                        f"{_NPU_MANAGER_ENABLED_FLAG} must be enabled for this test.")
+
+        # App without the feature
+        self.dut.no_feature_snippet.startActivity()
+        asserts.assert_true(self.dut.no_feature_snippet.checkRunInferenceExists(),
+                             "Run inference tool could not be found")
+        inference_handler = (
+            self.dut.no_feature_snippet.asyncWaitForInferenceFailed(
+                'inference_no_feature', _NO_FEATURE_APP_PACKAGE_NAME
+            )
+        )
+        self.dut.no_feature_snippet.runNpuInference()
+        inference_event = inference_handler.waitAndGet('inference_no_feature', 30)
+        asserts.assert_is_not_none(
+            inference_event, "Inference did not fail for app without feature."
+        )
+
+        # App with the feature
+        self.dut.background_delegate_snippet.startActivity()
+        asserts.assert_true(self.dut.background_delegate_snippet.checkRunInferenceExists(),
+                            "Run inference tool could not be found")
+        inference_handler = (
+            self.dut.background_delegate_snippet.asyncWaitForInferenceComplete(
+                'inference_with_feature', _BACKGROUND_APP_PACKAGE_NAME
+            )
+        )
+        self.dut.background_delegate_snippet.runNpuInference()
+        inference_event = inference_handler.waitAndGet('inference_with_feature', 30)
+        asserts.assert_is_not_none(
+            inference_event, "Inference did not complete for app with feature."
+        )
 
     def test_aicore_rewrite(self):
         """
@@ -144,7 +194,9 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
         self.dut.sapi_snippet.turnScreenOn()
         self.dut.sapi_snippet.pressMenu()
 
-        inference_handler = self.dut.sapi_snippet.asyncWaitForInferenceComplete('inference')
+        inference_handler = self.dut.sapi_snippet.asyncWaitForInferenceComplete(
+            'inference'
+        )
         self.dut.sapi_snippet.startActivity()
         asserts.skip_if(not self.dut.sapi_snippet.isFeatureAvailable(), 'SAPI Rewrite Feature is not '
                                                                         'available on this device.')
@@ -173,17 +225,25 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
         asserts.skip_if(not self._get_device_config(_MACHINE_LEARNING_NAMESPACE, _NPU_MANAGER_ENABLED_FLAG),
                         f"{_NPU_MANAGER_ENABLED_FLAG} must be enabled for this test.")
 
-        app_resume_background_handler = self.dut.background_delegate_snippet.asyncWaitForAppResume(
-        'resume_background'
+        app_resume_background_handler = (
+            self.dut.background_delegate_snippet.asyncWaitForAppResume(
+                'resume_background', _BACKGROUND_APP_PACKAGE_NAME
+            )
         )
-        app_resume_foreground_handler = self.dut.foreground_delegate_snippet.asyncWaitForAppResume(
-        'resume_foreground'
+        app_resume_foreground_handler = (
+            self.dut.foreground_delegate_snippet.asyncWaitForAppResume(
+                'resume_foreground', _FOREGROUND_APP_PACKAGE_NAME
+            )
         )
-        inference_handler_background =  self.dut.background_delegate_snippet.asyncWaitForInferenceComplete(
-            'background'
+        inference_handler_background = (
+            self.dut.background_delegate_snippet.asyncWaitForInferenceComplete(
+                'background', _BACKGROUND_APP_PACKAGE_NAME
+            )
         )
-        inference_handler_foreground =  self.dut.background_delegate_snippet.asyncWaitForInferenceComplete(
-            'foreground'
+        inference_handler_foreground = (
+            self.dut.foreground_delegate_snippet.asyncWaitForInferenceComplete(
+                'foreground', _FOREGROUND_APP_PACKAGE_NAME
+            )
         )
         self.dut.adb.shell("cmd npu set-budget-policy")
         self.dut.background_delegate_snippet.startActivity()
