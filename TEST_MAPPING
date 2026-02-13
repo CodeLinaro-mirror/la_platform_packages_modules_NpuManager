@@ -2,11 +2,17 @@
   "postsubmit": [
     {
       "name": "CtsNpuManagerTestCases"
+    },
+    {
+      "name": "CtsNpuManagerMoblyTestCases"
     }
   ],
   "presubmit": [
     {
       "name": "CtsNpuManagerTestCases"
+    },
+    {
+      "name": "CtsNpuManagerMoblyTestCases"
     }
   ]
 }

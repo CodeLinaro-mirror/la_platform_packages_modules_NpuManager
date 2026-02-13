@@ -112,9 +112,5 @@ cc_library_static {
     export_include_dirs: [
         "include",
     ],
-    shared_libs: [
-        "libcom.android.npumanager",
-        "libbase",
-    ],
     visibility: ["//frameworks/base/native/android:__pkg__"],
 }

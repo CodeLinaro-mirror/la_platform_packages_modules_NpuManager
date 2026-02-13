@@ -26,7 +26,7 @@ import static android.npumanager.NpuManager.NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOA
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
-
+import static android.os.Process.INVALID_UID;
 import static com.android.server.npumanager.ModelLoadRequestInfo.RequestState.LOADED;
 import static com.android.server.npumanager.ModelLoadRequestInfo.RequestState.NOT_PRIORITIZED;
 import static com.android.server.npumanager.ModelLoadRequestInfo.RequestState.PENDING_LOAD;
@@ -45,9 +45,7 @@ import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.util.Log;
-
 import com.android.internal.annotations.GuardedBy;
-
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -382,15 +380,16 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
 
     @Override
     void handleWorkEnded(WorkInfo workInfo, @EndReason byte reason) {
+        int completedUid =
+                workInfo.originalUid != INVALID_UID ? workInfo.originalUid : workInfo.uid;
         if (reason != EndReason.COMPLETED) {
-            Log.d(TAG, "Work ended with reason: " + reason);
+            Log.d(TAG, "Work ended with reason: " + reason + " for UID " + completedUid);
             return;
         }
 
         Map<Integer, Integer> priorityMap = mPriorityManager.createUidPriorityMap();
 
         synchronized (this) {
-            int completedUid = workInfo.originalUid;
             Log.d(TAG, "Work completed for UID: " + completedUid);
             mTimeUidLastCompleted.put(completedUid, SystemClock.elapsedRealtime());
             Set<Integer> equalPriorityUids =

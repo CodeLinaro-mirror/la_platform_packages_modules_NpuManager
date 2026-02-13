@@ -104,7 +104,6 @@ public class CtsNpuModelManagerTest {
     private static final String EXTRA_PACKAGE_NAME = "packagename";
     private static final long APP_START_TIMEOUT_MS = 5000;
 
-    // TODO(b/462125442) Update this to common path when available, this only exists on cuttlefish.
     private static final String RUN_INFERENCE_TOOL_PATH =
             "/apex/com.android.hardware.npu/bin/run-test-inference";
 
@@ -355,9 +354,7 @@ public class CtsNpuModelManagerTest {
     @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
     public void testNpuModelManager_turnTakingPolicy_equalImportances() throws Exception {
         assumeTrue(checkRunInferenceExists());
-
         mContext.getSystemService(NpuManager.class).setPolicy(NPU_MODEL_POLICY_TURN_TAKING, null);
-
         // First load background model
         CountDownLatch backgroundLatch = new CountDownLatch(1);
         CountDownLatch unloadLatch = new CountDownLatch(1);
@@ -428,9 +425,8 @@ public class CtsNpuModelManagerTest {
         // Second app should not be allowed to load.
         mForegroundNpuManager.requestLoadModel(foregroundRequest, foregroundCallback);
         assertTrue(notPrioritizedLatch.await(5, TimeUnit.SECONDS));
-
-        // After the inference completes, the first app should unload and second should be able to
-        // load.
+        // TODO: Replace this with mBackgroundNpuManager.runTestInference()
+        // when b/482073308 is resolved.
         runTestInference(BACKGROUND_PACKAGE_NAME);
         assertTrue(unloadLatch.await(5, TimeUnit.SECONDS));
         assertTrue(canLoadLatch.await(5, TimeUnit.SECONDS));
@@ -1169,8 +1165,6 @@ public class CtsNpuModelManagerTest {
     }
 
     private void runTestInference(String packageName) throws PackageManager.NameNotFoundException {
-        // TODO (b/462125442) --original-uid might not be supported on all devices, so call this
-        // inside the test apps instead of here.
         mUiAutomation.executeShellCommand(
                 RUN_INFERENCE_TOOL_PATH
                         + " --job-priority=1"

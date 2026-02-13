@@ -16,48 +16,33 @@
 
 /* libandroid_npumanager: Let libandroid lazily load and call into libcom.android.npumanager. */
 
-#include <android-base/logging.h>
-#include <android-base/result.h>
 #include <android/npumanager/buffer.h>
 #include <android/npumanager/buffer_impl.h>
 #include <dlfcn.h>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <string>
+#include <stdlib.h>
 
 // b/479732472: Lazily load libcom.android.npumanager.so. libandroid.so might be loaded to processes
 // before the APEX is ready, so don't let libandroid.so immediately dlopen()
 // libcom.android.npumanager.so.
 namespace {
 
-using ::android::base::Error;
-using ::android::base::Result;
-
 constexpr const char kLibComAndroidNpuManager[] = "libcom.android.npumanager.so";
 
-std::string GetDlError() {
-    const char* e = dlerror();
-    return e ? e : "";
-}
-
-Result<void*> LoadLibComAndroidNpuManager() {
+void* LoadLibComAndroidNpuManager() {
     static void* library_handle = dlopen(kLibComAndroidNpuManager, RTLD_LAZY | RTLD_LOCAL);
-    static std::string error = GetDlError();
-    return library_handle ? Result<void*>(library_handle) : (Error() << error);
+    return library_handle;
 }
 template <typename Fn>
 Fn LoadSymbol(const char* name) {
     auto library_handle = LoadLibComAndroidNpuManager();
-    if (!library_handle.ok()) {
-        LOG(FATAL) << "Failed to load " << kLibComAndroidNpuManager << ": "
-                   << library_handle.error();
+    if (library_handle == nullptr) {
+        // TODO: b/481873842 - Find a good way to log the error.
+        abort();
         return nullptr;
     }
-    void* symbol = dlsym(*library_handle, name);
+    void* symbol = dlsym(library_handle, name);
     if (symbol == nullptr) {
-        LOG(FATAL) << "Failed to load symbol " << name << " from " << kLibComAndroidNpuManager
-                   << ": " << dlerror();
+        abort();
         return nullptr;
     }
     return reinterpret_cast<Fn>(symbol);

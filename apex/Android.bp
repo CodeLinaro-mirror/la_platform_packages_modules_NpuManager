@@ -89,6 +89,9 @@ apex {
     native_shared_libs: [
         "libcom.android.npumanager",
     ],
+    jni_libs: [
+        "libnpumanager_service_jni",
+    ],
 }
 
 sdk {

@@ -19,25 +19,33 @@ package {
     default_team: "trendy_team_machine_learning",
 }
 
-cc_test_library {
-    name: "libctsnpumanager_jni",
-    // TODO: b/481533812 - re-enable once libnpumanager is added back to libandroid
-    // srcs: ["android_npumanager_cts_CtsNpuManagerBufferTest.cpp"],
-    shared_libs: [
-        "libandroid",
-        "liblog",
+rust_ffi_shared {
+    name: "libnpumanager_service_jni",
+    crate_name: "npumanager_service_jni",
+    crate_root: "lib.rs",
+    srcs: [
+        "com_android_server_npumanager_NpuAllocator.rs",
+        "lib.rs",
+    ],
+    rustlibs: [
+        "libbinder_rs",
+        "framework-npumanager-aidl-rust",
+        "libbitflags",
+        "libjni",
+        "liblibc",
+        "libprotobuf",
+        "libprotobuf_json_mapping",
+        "libdma_heap_config_proto_rust",
+        "libdma_heap_config_rust",
+        "libdmabufheap_rust",
+        "liberrno",
+        "liblog_rust",
+        "libnix",
+        "libwrapfd_rust",
     ],
     static_libs: [
-        "libbase_ndk",
+        "libdmabufheap",
     ],
-    header_libs: [
-        "jni_headers",
-    ],
-    cflags: [
-        "-Wall",
-        "-Werror",
-    ],
-    whole_static_libs: ["libnativetesthelper_jni"],
-    stl: "c++_static",
-    sdk_version: "current",
+    apex_available: ["com.android.npumanager"],
+    min_sdk_version: "apex_inherit",
 }

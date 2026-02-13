@@ -31,6 +31,7 @@
         <option name="mainline-module-package-name" value="com.google.android.npumanager" />
     </object>
     <option name="build_apk" key="file" value="SapiApp.apk" />
-    <option name="build_apk" key="file" value="BackgroundNnapiDelegateApp.apk" />
-    <option name="build_apk" key="file" value="ForegroundNnapiDelegateApp.apk" />
+    <option name="build_apk" key="file" value="BackgroundNpuTestApp.apk" />
+    <option name="build_apk" key="file" value="ForegroundNpuTestApp.apk" />
+    <option name="build_apk" key="file" value="NoFeatureNpuTestApp.apk" />
 </configuration>
