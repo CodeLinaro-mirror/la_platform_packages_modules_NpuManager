@@ -20,6 +20,5 @@
 #include <string>
 
 std::string RunNnapiInference(const char* model_data, size_t model_size,
-                              const char* input_bin_data, size_t input_bin_size,
-                              int* status);
+                              const char* input_bin_data, size_t input_bin_size);
 #endif //MAIN_NNAPI_INFERENCE_H
