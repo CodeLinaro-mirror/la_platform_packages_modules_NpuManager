@@ -16,9 +16,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     package="com.android.npumanager.delegateapp">
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NPU_MODEL_MANAGER_API" />
-    <uses-feature android:name="android.hardware.npu" android:required="true"/>
     <application android:label="Background Delegate App">
         <provider android:name="androidx.startup.InitializationProvider"
             android:authorities="com.android.npumanager.delegateapp.androidx-startup"
@@ -42,4 +39,7 @@
         android:targetPackage="com.android.npumanager.delegateapp"
         android:label="Delegate App Snippet"
         />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NPU_MODEL_MANAGER_API" />
+    <uses-feature android:name="android.hardware.npu" android:required="true"/>
 </manifest>

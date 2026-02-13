@@ -39,8 +39,7 @@
 
 std::string RunNnapiInference(const char* model_data, size_t model_size,
                               const char* input_bin_data,
-                              size_t input_bin_size, int* status) {
-    *status = -1;
+                              size_t input_bin_size) {
     std::string model_path =  "assets/mobilenet_v2_224_100.tflite";
     std::string input_path = "/data/local/tmp/panda.ndarray";
 
@@ -151,6 +150,5 @@ std::string RunNnapiInference(const char* model_data, size_t model_size,
     }
 
     ALOGI("Inference finished successfully.");
-    *status = 0;
     return result_ss.str();
 }
