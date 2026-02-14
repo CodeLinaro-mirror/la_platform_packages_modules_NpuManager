@@ -25,12 +25,17 @@ import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.util.Log;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 public class TestNpuManagerClient {
     private static final String TAG = "TestNpuManagerClient";
     private static final String SERVICE_CLASS = "android.npumanager.testapp.NpuManagerTestService";
+    // TODO(b/462125442) Update this to common path when available, this only exists on cuttlefish.
+    private static final String RUN_INFERENCE_TOOL_PATH =
+            "/apex/com.android.hardware.npu/bin/run-test-inference";
     private static final int MAX_ATTEMPTS = 3;
 
     private final Context mContext;
@@ -130,5 +135,20 @@ public class TestNpuManagerClient {
 
     public void unbind() {
         mContext.unbindService(mConnection);
+    }
+
+    public void runTestInference() throws IOException {
+        waitForConnection();
+        if (mService != null) {
+            try {
+                mService.runTestInference();
+            } catch (RemoteException e) {
+                // ignore
+            }
+        }
+    }
+
+    public boolean checkRunInferenceExists() {
+        return new File(RUN_INFERENCE_TOOL_PATH).exists();
     }
 }

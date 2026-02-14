@@ -17,6 +17,7 @@
 //! Implements the allocation request type.
 
 use crate::cookie::Cookie;
+use crate::unpack_option::AllocCallbackFn;
 use framework_npumanager_aidl::aidl::android::npumanager::{
     BufferType::BufferType, FileSegment::FileSegment, NpuBufferGetRequest::NpuBufferGetRequest,
     NpuBufferGetRequest::BUFFER_PRIORITY_DEFAULT, NpuBufferGetRequest::PROT_READ,
@@ -64,11 +65,29 @@ pub struct ANpuManager_AllocRequest {
 }
 
 impl ANpuManager_AllocRequest {
-    // Reports a failure. error_num must be non-zero.
+    pub fn cookie(&self) -> Arc<Cookie> {
+        self.cookie.clone()
+    }
+
+    pub fn aidl_request(&self) -> &NpuBufferGetRequest {
+        &self.aidl_request
+    }
+
+    /// Returns the non-null on_alloc callback function.
+    ///
+    /// # Panics
+    /// Panics if on_alloc is null.
+    pub fn on_alloc_fn_or_panic(&self) -> AllocCallbackFn {
+        self.on_alloc.expect("onAlloc must be set before calling ANpuManager_allocAsync()")
+    }
+
+    pub fn on_preempt_fn(&self) -> ANpuManager_PreemptCallback {
+        self.on_preempt
+    }
+
+    /// Calls the on_alloc callback with a given failure.
     pub fn on_failure(&self, error_num: i32) {
-        let error_num = if error_num == 0 { libc::EINVAL } else { error_num };
-        // Doc of ANpuManager_allocAsync requires onAlloc to be set.
-        let on_alloc = self.on_alloc.expect("onAlloc is null");
+        let on_alloc = self.on_alloc_fn_or_panic();
         // SAFETY: see ANpuManagerImpl_ANpuManager_AllocRequest_setOnAlloc.
         unsafe {
             on_alloc(self.cookie.raw(), error_num, std::ptr::null_mut());
@@ -210,7 +229,7 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setBufferPrior
     request: &mut ANpuManager_AllocRequest,
     bufferPriority: i32,
 ) {
-    // Safety: The caller ensures that `request` is a valid pointer.
+    // SAFETY: The caller ensures that `request` is a valid pointer.
     request.aidl_request.bufferPriority = bufferPriority;
 }
 
@@ -240,7 +259,7 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_AllocRequest_setFileSegment
         None
     } else {
         Some(FileSegment {
-            // Safety: The caller gives us the ownership of fdToOwn.
+            // SAFETY: The caller gives us the ownership of fdToOwn.
             fileFd: Some(binder::ParcelFileDescriptor::new(unsafe {
                 OwnedFd::from_raw_fd(fdToOwn)
             })),

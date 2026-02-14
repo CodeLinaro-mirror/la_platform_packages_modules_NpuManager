@@ -275,7 +275,7 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
     @Override
     @RequiresNoPermission
     public INpuAllocator createAllocator(INpuAllocatorCallback callback) {
-        throw new UnsupportedOperationException("Not implemented yet");
+        return new NpuAllocator(callback);
     }
 
     @Override

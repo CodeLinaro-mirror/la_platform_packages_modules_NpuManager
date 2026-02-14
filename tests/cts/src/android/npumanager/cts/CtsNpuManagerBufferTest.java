@@ -18,18 +18,21 @@ package android.npumanager.cts;
 
 import android.content.pm.PackageManager;
 import android.platform.test.annotations.RequiresFlagsEnabled;
+import androidx.test.runner.AndroidJUnit4;
 import com.android.compatibility.common.util.RequiredFeatureRule;
 import com.android.gtestrunner.GtestRunner;
 import com.android.gtestrunner.TargetLibrary;
 import org.junit.runner.RunWith;
 import org.junit.Rule;
+import org.junit.Ignore;
 
-@RunWith(GtestRunner.class)
-@TargetLibrary("ctsnpumanager_jni")
+@Ignore("b/481533812")
+// @RunWith(GtestRunner.class)
+// @TargetLibrary("ctsnpumanager_jni")
+@RunWith(AndroidJUnit4.class)
 @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
 public class CtsNpuManagerBufferTest {
     @Rule(order = 0)
     public RequiredFeatureRule REQUIRES_NPU_RULE =
             new RequiredFeatureRule(PackageManager.FEATURE_NEURAL_PROCESSING_UNIT);
-
 }

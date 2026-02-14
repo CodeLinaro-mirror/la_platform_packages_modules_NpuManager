@@ -63,11 +63,17 @@ rust_ffi_static {
         "*.rs",
     ],
     rustlibs: [
+        "framework-npumanager-aidl-rust",
         "libbinder_rs",
         "liberrno",
         "libnpumanager_bindings",
         "liblibc",
-        "framework-npumanager-aidl-rust",
+        "liblog_rust",
+        "libitertools",
+    ],
+    shared_libs: [
+        "libbinder_ndk",
+        "liblog",
     ],
     apex_available: ["com.android.npumanager"],
     min_sdk_version: "apex_inherit",
@@ -105,10 +111,6 @@ cc_library_static {
     ],
     export_include_dirs: [
         "include",
-    ],
-    shared_libs: [
-        "libcom.android.npumanager",
-        "libbase",
     ],
     visibility: ["//frameworks/base/native/android:__pkg__"],
 }
