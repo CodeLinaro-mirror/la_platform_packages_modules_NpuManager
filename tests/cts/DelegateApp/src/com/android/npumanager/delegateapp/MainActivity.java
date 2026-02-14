@@ -28,6 +28,7 @@ import android.npumanager.NpuManager;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.util.Log;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -177,17 +178,10 @@ public class MainActivity extends Activity {
     public void runNnapiInference() {
         // Run NNAPI Inference Code.
         if (modelBuffer != null && inputBuffer != null) {
-            try {
             runNnapiInference(modelBuffer, inputBuffer);
             Intent intent = new Intent(ACTION_INFERENCE_COMPLETE);
             intent.putExtra("package", getPackageName());
             sendBroadcast(intent);
-            } catch (RuntimeException e) {
-                Log.e(TAG, e.getMessage(), e);
-                Intent intent = new Intent(ACTION_INFERENCE_FAILED);
-                intent.putExtra("package", getPackageName());
-                sendBroadcast(intent);
-            }
         }
     }
 

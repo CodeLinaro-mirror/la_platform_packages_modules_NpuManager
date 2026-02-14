@@ -45,11 +45,14 @@ public final class NpuManager {
 
     class ModelLoadCallbackWrapper extends IModelLoadCallback.Stub {
         ModelLoadRequestCallback mCallback;
+        ModelLoadRequest mRequest;
         ModelLoadStatusListener mListener;
         Executor mExecutor;
 
-        ModelLoadCallbackWrapper(ModelLoadRequestCallback callback, Executor executor) {
+        ModelLoadCallbackWrapper(
+                ModelLoadRequestCallback callback, ModelLoadRequest request, Executor executor) {
             mCallback = callback;
+            mRequest = request;
             mExecutor = executor;
             mListener = new ModelLoadStatusListener();
         }
@@ -57,34 +60,30 @@ public final class NpuManager {
         /**
          * The app can load the model with the specified size.
          *
-         * @param request Object containing the model load request information.
          * @param status The status of the model load.
          * @hide
          */
         @RequiresNoPermission
-        public void onCanLoadModel(
-                ModelLoadRequestParcelable requestParcelable, @NpuModelLoadStatus int status) {
-            ModelLoadRequest request = new ModelLoadRequest(requestParcelable);
+        public void onCanLoadModel(@NpuModelLoadStatus int status) {
             mExecutor.execute(
                     () -> {
-                        mCallback.onCanLoadModel(request, status, mListener);
+                        mCallback.onCanLoadModel(mRequest, status, mListener);
                     });
-            Trace.endAsyncSection("NpuManager#requestLoadModel", request.getId());
+            Trace.endAsyncSection("NpuManager#requestLoadModel", mRequest.getId());
         }
 
         /**
          * The app should unload the model to free at least size.
          *
-         * @param request Object containing the model load request information.
          * @hide
          */
         @RequiresNoPermission
-        public void onRequestUnloadModel(ModelLoadRequestParcelable requestParcelable) {
-            ModelLoadRequest request = new ModelLoadRequest(requestParcelable);
+        public void onRequestUnloadModel() {
             mExecutor.execute(
                     () -> {
-                        Trace.beginAsyncSection("NpuManager#onRequestUnloadModel", request.getId());
-                        mCallback.onRequestUnloadModel(request);
+                        Trace.beginAsyncSection(
+                                "NpuManager#onRequestUnloadModel", mRequest.getId());
+                        mCallback.onRequestUnloadModel(mRequest);
                     });
         }
 
@@ -92,20 +91,17 @@ public final class NpuManager {
          * The model request has completed either successfully or due to cancellation and there will
          * be no further status updates to the request.
          *
-         * @param request The model load request that has completed.
+         * @param status The model load request that has completed.
          * @hide
          */
         @RequiresNoPermission
-        public void onModelLoadRequestComplete(
-                ModelLoadRequestParcelable requestParcelable,
-                @NpuModelLoadRequestStatus int status) {
-            ModelLoadRequest request = new ModelLoadRequest(requestParcelable);
+        public void onModelLoadRequestComplete(@NpuModelLoadRequestStatus int status) {
             mExecutor.execute(
                     () -> {
-                        mCallback.onModelLoadRequestComplete(request, status);
+                        mCallback.onModelLoadRequestComplete(mRequest, status);
                     });
             if (status == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
-                Trace.endAsyncSection("NpuManager#cancelModelLoad", request.getId());
+                Trace.endAsyncSection("NpuManager#cancelModelLoad", mRequest.getId());
             }
         }
     }
@@ -307,8 +303,8 @@ public final class NpuManager {
     private final INpuManagerService mNpuManagerService;
 
     private ModelLoadCallbackWrapper getWrapperForCallback(
-            ModelLoadRequestCallback callback, Executor executor) {
-        return new ModelLoadCallbackWrapper(callback, executor);
+            ModelLoadRequestCallback callback, ModelLoadRequest request, Executor executor) {
+        return new ModelLoadCallbackWrapper(callback, request, executor);
     }
 
     private Context mContext;
@@ -338,7 +334,7 @@ public final class NpuManager {
         Trace.beginAsyncSection("NpuManager#requestLoadModel", request.getId());
         try {
             mNpuManagerService.canLoadModel(
-                    request.getParcelable(), getWrapperForCallback(callback, executor));
+                    request.getParcelable(), getWrapperForCallback(callback, request, executor));
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }

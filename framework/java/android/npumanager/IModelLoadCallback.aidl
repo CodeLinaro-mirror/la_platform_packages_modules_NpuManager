@@ -14,15 +14,13 @@
 
 package android.npumanager;
 
-import android.npumanager.ModelLoadRequestParcelable;
-
 /**
  * Callback interface for model load requests.
  *
  * @hide
  */
 oneway interface IModelLoadCallback {
-    void onCanLoadModel(in ModelLoadRequestParcelable request, in int status);
-    void onRequestUnloadModel(in ModelLoadRequestParcelable request);
-    void onModelLoadRequestComplete(in ModelLoadRequestParcelable request, in int status);
+    void onCanLoadModel(in int status);
+    void onRequestUnloadModel();
+    void onModelLoadRequestComplete(in int status);
 }
