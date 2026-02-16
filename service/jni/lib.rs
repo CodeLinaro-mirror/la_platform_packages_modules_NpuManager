@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The Android Open Source Project
+ * Copyright (C) 2026 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,14 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
 
-#ifndef MAIN_NNAPI_INFERENCE_H
-#define MAIN_NNAPI_INFERENCE_H
-#include <cstddef>
-#include <string>
+//! JNI of NpuManagerService
 
-std::string RunNnapiInference(const char* model_data, size_t model_size,
-                              const char* input_bin_data, size_t input_bin_size,
-                              int* status);
-#endif //MAIN_NNAPI_INFERENCE_H
+#[allow(non_snake_case)]
+mod com_android_server_npumanager_NpuAllocator;

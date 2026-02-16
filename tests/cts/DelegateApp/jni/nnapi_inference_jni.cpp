@@ -23,14 +23,14 @@
 
 #define LOG_TAG "NnapiDelegateAppJNI"
 extern "C" JNIEXPORT jstring JNICALL
-
 #define ALOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define ALOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 
-Java_com_android_npumanager_delegateapp_MainActivity_runInference(
-        JNIEnv* env, jobject /* this */, jbyteArray model_buffer,
-        jbyteArray input_buffer) {
+Java_com_android_npumanager_delegateapp_MainActivity_runNnapiInference(JNIEnv* env,
+                                                                       jobject /* this */,
+                                                                       jbyteArray model_buffer,
+                                                                       jbyteArray input_buffer) {
 
     if (model_buffer == nullptr) {
         ALOGE("Model buffer is null");
@@ -54,13 +54,17 @@ Java_com_android_npumanager_delegateapp_MainActivity_runInference(
         return env->NewStringUTF("Error: Failed to get input data");
     }
 
+    int status = 0;
     std::string result =
             RunNnapiInference(reinterpret_cast<const char*>(model_data), model_size,
-                              reinterpret_cast<const char*>(input_data), input_size);
+                              reinterpret_cast<const char*>(input_data), input_size,
+                              &status);
 
     env->ReleaseByteArrayElements(model_buffer, model_data, JNI_ABORT);
     env->ReleaseByteArrayElements(input_buffer, input_data, JNI_ABORT);
-
+    if (status != 0) {
+        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), result.c_str());
+    }
 
     return env->NewStringUTF(result.c_str());
 }

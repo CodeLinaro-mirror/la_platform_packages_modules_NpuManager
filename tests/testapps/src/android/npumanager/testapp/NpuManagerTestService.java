@@ -31,12 +31,16 @@ import android.os.IBinder;
 import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.util.Log;
+
+import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Executors;
 
 public class NpuManagerTestService extends Service {
     private static final String TAG = "NpuManagerTestService";
+    private static final String RUN_INFERENCE_TOOL_PATH =
+            "/apex/com.android.hardware.npu/bin/run-test-inference";
     private final Set<ModelLoadRequest> mRequests = new HashSet<ModelLoadRequest>();
     private NpuManager mNpuManager;
 
@@ -159,6 +163,16 @@ public class NpuManagerTestService extends Service {
                             Executors.newSingleThreadExecutor());
                     mRequests.add(frameworkRequest);
                     Binder.restoreCallingIdentity(identity);
+                }
+
+                @RequiresNoPermission
+                @Override
+                public void runTestInference() {
+                    try {
+                        Runtime.getRuntime().exec(RUN_INFERENCE_TOOL_PATH + " --job-priority=1");
+                    } catch (IOException e) {
+                        // Ignore
+                    }
                 }
 
                 @RequiresNoPermission

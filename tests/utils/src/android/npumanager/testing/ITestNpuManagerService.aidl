@@ -29,4 +29,5 @@ oneway interface ITestNpuManagerService {
     void cancelLoadModel(in TestModelLoadRequest request);
     void setPolicy(int policy, in PersistableBundle policyParams);
     void reset();
+    void runTestInference();
 }

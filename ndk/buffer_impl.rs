@@ -18,14 +18,26 @@
 
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
-#![allow(unused_variables)]
 
 mod alloc_request;
 mod cookie;
+mod deferred_alloc_error;
+mod npu_allocator_callback;
+mod npu_allocator_client;
+mod npu_buffer_impl;
+mod npu_manager_delegate;
+mod translations;
+mod try_clone;
+mod unpack_option;
 
 use crate::alloc_request::ANpuManager_AllocRequest;
+use crate::deferred_alloc_error::DeferredAllocError;
+use crate::npu_buffer_impl::ANpuBufferImpl;
+use crate::npu_manager_delegate::NpuManagerDelegate;
 use errno::{set_errno, Errno};
-use npumanager_bindings::{ANpuBuffer, ANpuManager_LoadCallback};
+use framework_npumanager_aidl::aidl::android::npumanager::FileSegment::FileSegment;
+use npumanager_bindings::ANpuManager_LoadCallback;
+use std::os::fd::{FromRawFd, OwnedFd};
 
 /// Tests if the provided requests are supported or not.
 ///
@@ -52,10 +64,23 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_isSupported(
     requestsLen: usize,
     outIsSupported: *mut bool,
 ) -> std::ffi::c_int {
+    // SAFETY: The caller ensures `requests` is valid for `requestsLen` elements.
+    let requests_slice = unsafe { std::slice::from_raw_parts(requests, requestsLen) };
+    // SAFETY: The caller ensures that the pointers in `requests` are valid.
+    let requests_refs = requests_slice.iter().map(|&ptr| unsafe { &*ptr });
     // SAFETY: The caller ensures `outIsSupported` is valid for `requestsLen` elements.
     let results_slice = unsafe { std::slice::from_raw_parts_mut(outIsSupported, requestsLen) };
-    results_slice.fill(false);
-    0
+
+    match NpuManagerDelegate::get_instance() {
+        Ok(delegate) => delegate.is_supported(requests_refs, results_slice),
+        // If there is any error (e.g. no NpuManagerService, NpuManagerService can't
+        // provide an allocator because the DMA buf heap config cannot be parsed, etc.),
+        // propagate the error.
+        Err(e) => {
+            set_errno(Errno(*e));
+            -1
+        }
+    }
 }
 
 /// Asynchronously allocates multiple buffers.
@@ -82,7 +107,12 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_allocAsync(
     // SAFETY: The caller ensures that each element of `requests` is a valid pointer.
     let requests_refs = requests_slice.iter().map(|&ptr| unsafe { &*ptr });
 
-    requests_refs.for_each(|request| request.on_failure(libc::ENOSYS));
+    match NpuManagerDelegate::get_instance() {
+        Ok(delegate) => {
+            delegate.alloc_async(requests_refs).into_iter().for_each(DeferredAllocError::call)
+        }
+        Err(e) => requests_refs.for_each(|req| req.on_failure(*e)),
+    }
 }
 
 /// Notifies NpuManager that the app is done with these buffers. NpuManager may
@@ -102,11 +132,22 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuManager_allocAsync(
 /// 0 on success, or -1 on error with errno set.
 #[no_mangle]
 pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_free(
-    buffers: *const *mut ANpuBuffer,
+    buffers: *const *mut ANpuBufferImpl,
     buffersLen: usize,
 ) -> std::ffi::c_int {
-    set_errno(Errno(libc::ENOSYS));
-    -1
+    // SAFETY: The caller ensures `buffers` is valid for `buffersLen` elements.
+    let buffers_slice = unsafe { std::slice::from_raw_parts(buffers, buffersLen) };
+
+    // SAFETY: The caller ensures that the pointers in `buffers` are valid.
+    let buffers_refs = buffers_slice.iter().map(|&ptr| unsafe { &*ptr });
+
+    match NpuManagerDelegate::get_instance() {
+        Ok(delegate) => delegate.free(buffers_refs),
+        Err(e) => {
+            set_errno(Errno(*e));
+            -1
+        }
+    }
 }
 
 /// Maps a buffer into the application's address space.
@@ -127,15 +168,16 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_free(
 /// The mapped address on success, or MAP_FAILED on error with errno set.
 #[no_mangle]
 pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_map(
-    buf: &mut ANpuBuffer,
+    buf: &mut ANpuBufferImpl,
     addr: *mut std::ffi::c_void,
     length: usize,
     prot: std::ffi::c_int,
     flags: std::ffi::c_int,
     offset: libc::off_t,
 ) -> *mut std::ffi::c_void {
-    set_errno(Errno(libc::ENOSYS));
-    libc::MAP_FAILED
+    // SAFETY: The caller of ANpuManagerImpl_ANpuBuffer_map ensures that |addr|
+    //   is safe to be passed to mmap().
+    unsafe { buf.mmap(addr, length, prot, flags, offset) }
 }
 
 /// Unmaps a previously mapped buffer.
@@ -145,19 +187,19 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_map(
 /// `ANpuBuffer_map()`.
 ///
 /// # Arguments
-/// * `buf` - The buffer to unmap.
+/// * `_buf` - The buffer to unmap.
 /// * `addr` - passed to munmap().
 /// * `length` - passed to munmap().
 /// # Returns
 /// 0 on success, or -1 on error with errno set.
 #[no_mangle]
 pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_unmap(
-    buf: &mut ANpuBuffer,
+    _buf: &mut ANpuBufferImpl,
     addr: *mut std::ffi::c_void,
     length: usize,
 ) -> std::ffi::c_int {
-    set_errno(Errno(libc::ENOSYS));
-    -1
+    // SAFETY: The caller ensures that `addr` and `length` are valid.
+    unsafe { libc::munmap(addr, length) }
 }
 
 /// Sets the priority of the buffer.
@@ -173,18 +215,26 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_unmap(
 /// 0 on success, or -1 on error with errno set.
 #[no_mangle]
 pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_setPriority(
-    buf: &mut ANpuBuffer,
+    buf: &mut ANpuBufferImpl,
     newBufferPriority: i32,
 ) -> std::ffi::c_int {
-    set_errno(Errno(libc::ENOSYS));
-    -1
+    match NpuManagerDelegate::get_instance() {
+        Ok(delegate) => delegate.set_priority(buf, newBufferPriority),
+        Err(e) => {
+            set_errno(Errno(*e));
+            -1
+        }
+    }
 }
 
 /// Loads a file into the buffer asynchronously.
 ///
 /// # Safety
 /// The user is responsible for providing a valid buffer received from
-/// the `onAlloc` callback and not freed.
+/// the `onAlloc` callback and not `ANpuManagerImpl_ANpuBuffer_free()`d.
+///
+/// The user is responsible for providing a valid file descriptor, which
+/// ownership is transferred to NpuManager.
 ///
 /// # Arguments
 /// * `buf` - The buffer to load into.
@@ -197,19 +247,30 @@ pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_setPriority(
 /// * `onLoad` - The callback to be invoked when loading is finished or has encountered an error.
 ///   See documentation of ANpuManager_LoadCallback for details about the arguments
 ///   when the callback is invoked.
-/// # Returns
-/// 0 on success, or -1 on error with errno set.
 #[no_mangle]
 pub unsafe extern "C" fn ANpuManagerImpl_ANpuBuffer_loadAsync(
-    buf: &mut ANpuBuffer,
+    buf: &mut ANpuBufferImpl,
     fdToOwn: i32,
     fileOffset: i64,
     segmentLength: i64,
     bufferOffset: i64,
     onLoad: ANpuManager_LoadCallback,
 ) {
+    // SAFETY: The caller gives us the ownership of fdToOwn.
+    let file_fd = unsafe { OwnedFd::from_raw_fd(fdToOwn) };
+    let file_segment = FileSegment {
+        fileFd: Some(binder::ParcelFileDescriptor::new(file_fd)),
+        fileOffset,
+        segmentLength,
+        bufferOffset,
+    };
     let on_load = onLoad.expect("onLoad is null");
-    // SAFETY: TODO: This needs to provide the cookie value associated with the buffer.
-    // However, since allocAsync is not implemented, this is not yet a problem.
-    unsafe { on_load(std::ptr::null_mut(), libc::ENOSYS, buf) };
+    match NpuManagerDelegate::get_instance() {
+        Ok(delegate) => delegate.load_async(buf, &file_segment, on_load),
+        Err(e) => {
+            let cookie = buf.cookie();
+            // SAFETY: see ANpuManager_LoadCallback
+            unsafe { on_load(cookie.raw(), *e, buf.opaque_handle()) }
+        }
+    }
 }
