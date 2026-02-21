@@ -77,6 +77,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
     private final Map<Integer, Integer> mModelSizeWeights;
 
     private final int mMaxBudget;
+    private final MetricsLogger mMetricsLogger = new MetricsLogger();
 
     @GuardedBy("this")
     private final Map<ModelLoadRequest, ModelLoadRequestInfo> mRequests = new HashMap<>();
@@ -169,14 +170,16 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         Log.d(TAG, "canLoadModel: request=" + request + ", callingUid=" + callingUid);
         Map<Integer, Set<ModelLoadRequest>> uidsToRequests;
         Map<ModelLoadRequest, ModelLoadRequestInfo> requests;
-
+        ModelLoadRequestInfo info =
+                new ModelLoadRequestInfo(request, callingUid, callback, PENDING_LOAD);
         synchronized (this) {
-            mRequests.put(
-                    request, new ModelLoadRequestInfo(request, callingUid, callback, PENDING_LOAD));
+            mRequests.put(request, info);
             requests = mRequests;
             mUidsToRequests.computeIfAbsent(callingUid, k -> new HashSet<>()).add(request);
             uidsToRequests = mUidsToRequests;
         }
+
+        mMetricsLogger.logModelLoadRequested(info);
 
         // Budget that has been requested or loaded, excluding the model request we're currently
         // processing.
@@ -196,7 +199,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
 
             if (availableBudget >= getModelWeightFromSizeOrThrow(request.getSize())) {
                 Log.d(TAG, "canLoadModel: CAN_LOAD_NOW");
-                callback.onCanLoadModel(NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
+                invokeOnCanLoadModelAndLog(callback, NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW, request);
                 return;
             }
 
@@ -261,7 +264,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
 
                 if (unloadingModels) {
                     Log.d(TAG, "canLoadModel: WAIT_FOR_UNLOAD");
-                    callback.onCanLoadModel(NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD);
+                    invokeOnCanLoadModelAndLog(
+                            callback, NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD, request);
                 }
             } else {
                 Log.d(TAG, "canLoadModel: NOT_PRIORITIZED");
@@ -272,7 +276,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                                 ModelLoadRequestInfo.RequestState.NOT_PRIORITIZED);
                     }
                 }
-                callback.onCanLoadModel(NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED);
+                invokeOnCanLoadModelAndLog(
+                        callback, NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED, request);
             }
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to call onCanLoadModel", e);
@@ -286,6 +291,21 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         }
     }
 
+    private void invokeRequestCompleteAndLog(
+            IModelLoadCallback callback, ModelLoadRequest request, int modelLoadRequestStatus)
+            throws RemoteException {
+        callback.onModelLoadRequestComplete(modelLoadRequestStatus);
+        ModelLoadRequestInfo modelLoadRequestInfo = mRequests.get(request);
+        if (modelLoadRequestInfo == null) {
+            return;
+        }
+        if (modelLoadRequestStatus == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
+            mMetricsLogger.logModelLoadRequestCancelled(modelLoadRequestInfo);
+        } else if (modelLoadRequestStatus == NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE) {
+            mMetricsLogger.logModelUnloaded(modelLoadRequestInfo);
+        }
+    }
+
     @Override
     void handleModelLoadCancelled(ModelLoadRequest request) {
         Log.d(TAG, "handleModelLoadCancelled: request=" + request);
@@ -293,8 +313,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             IModelLoadCallback callback =
                     mRequests.get(request) != null ? mRequests.get(request).getCallback() : null;
             if (callback != null) {
-                callback.onModelLoadRequestComplete(
-                        NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED);
+                invokeRequestCompleteAndLog(
+                        callback, request, NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED);
             }
         } catch (RemoteException e) {
             // Ignore
@@ -314,6 +334,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                 return;
             }
             modelLoadRequestInfo.setState(LOADED);
+            mMetricsLogger.logModelLoaded(modelLoadRequestInfo);
         }
     }
 
@@ -331,8 +352,8 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
             IModelLoadCallback callback =
                     mRequests.get(request) != null ? mRequests.get(request).getCallback() : null;
             if (callback != null) {
-                callback.onModelLoadRequestComplete(
-                        NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE);
+                invokeRequestCompleteAndLog(
+                        callback, request, NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE);
             }
         } catch (RemoteException e) {
             // ignore
@@ -586,7 +607,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     IModelLoadCallback cb = modelLoadRequestInfo.getCallback();
                     if (cb != null) {
                         modelLoadRequestInfo.setState(PENDING_LOAD);
-                        cb.onCanLoadModel(statusForIdealModels);
+                        invokeOnCanLoadModelAndLog(cb, statusForIdealModels, request);
                     } else {
                         Log.w(TAG, "No callback for request " + request);
                     }
@@ -595,6 +616,16 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to call onCanLoadModel", e);
         }
+    }
+
+    private void invokeOnCanLoadModelAndLog(
+            IModelLoadCallback cb, int status, ModelLoadRequest request) throws RemoteException {
+        cb.onCanLoadModel(status);
+        ModelLoadRequestInfo modelLoadRequestInfo = mRequests.get(request);
+        if (modelLoadRequestInfo == null) {
+            return;
+        }
+        mMetricsLogger.logModelLoadPolicyResponded(modelLoadRequestInfo, status);
     }
 
     private void requestUnloadModel(ModelLoadRequest request) {

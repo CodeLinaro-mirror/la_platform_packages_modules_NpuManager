@@ -106,6 +106,7 @@ public final class NpuManager {
         }
     }
 
+    // LINT.IfChange
     /** @hide */
     @SystemApi
     @IntDef(
@@ -139,6 +140,8 @@ public final class NpuManager {
      * @hide
      */
     @SystemApi public static final int NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED = 2;
+
+    // LINT.ThenChange(frameworks/proto_logging/stats/enums/npu/enums.proto)
 
     /** @hide */
     @SystemApi
@@ -209,6 +212,7 @@ public final class NpuManager {
      */
     @SystemApi public static final String KEY_MAX_BUDGET = "maxBudget";
 
+    // LINT.IfChange
     /**
      * A small model that is one that is less than 1GB in size.
      *
@@ -232,6 +236,9 @@ public final class NpuManager {
     @SystemApi
     public static final int NPU_MODEL_SIZE_GREATER_THAN_2G = NpuModelSize.GREATER_THAN_2G;
 
+    // LINT.ThenChange(frameworks/proto_logging/stats/enums/npu/enums.proto)
+
+    // LINT.IfChange
     /** @hide */
     @SystemApi
     @IntDef(
@@ -259,6 +266,8 @@ public final class NpuManager {
     @SystemApi
     public static final int NPU_MODEL_PRIORITY_BACKGROUND =
             ModelLoadRequestParcelable.PRIORITY_BACKGROUND;
+
+    // LINT.ThenChange(frameworks/proto_logging/stats/enums/npu/enums.proto)
 
     /** @hide */
     @SystemApi
