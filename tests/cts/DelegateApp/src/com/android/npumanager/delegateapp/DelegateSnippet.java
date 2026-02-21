@@ -21,7 +21,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.util.Log;
+
 import androidx.test.platform.app.InstrumentationRegistry;
+
 import com.google.android.mobly.snippet.Snippet;
 import com.google.android.mobly.snippet.event.EventCache;
 import com.google.android.mobly.snippet.event.SnippetEvent;
@@ -103,32 +105,6 @@ public class DelegateSnippet implements Snippet {
         if (activity != null) {
             activity.finish();
         }
-    }
-
-    @Rpc(description = "Triggers the runInference function in MainActivity.")
-    public void runNnapiNpuInference() {
-        new Thread(
-                        () -> {
-                            if (activity != null) {
-                                Log.i(
-                                        TAG,
-                                        "MainActivity instance found, posting runNpuInference to "
-                                                + "main thread.");
-                                try {
-                                    activity.loadNnapiModel();
-                                    activity.runNnapiInference();
-                                    Log.i(TAG, "runNpuInference execution posted.");
-
-                                } catch (Exception e) {
-                                    Log.e(TAG, "Exception while running runNpuInference", e);
-                                }
-                            } else {
-                                Log.w(
-                                        TAG,
-                                        "runNpuInference failed: MainActivity instance is null.");
-                            }
-                        })
-                .start();
     }
 
     @Rpc(description = "Triggers the runInference function in MainActivity.")

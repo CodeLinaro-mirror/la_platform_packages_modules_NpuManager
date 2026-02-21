@@ -346,6 +346,89 @@ public class CtsNpuModelManagerTest {
         assertTrue(cancelLatch.await(5, TimeUnit.SECONDS));
     }
 
+    @Test
+    @RequiresFlagsEnabled(com.android.npumanager.Flags.FLAG_NPUMANAGER_ENABLED)
+    public void testNpuModelManager_turnTakingPolicy_sameIds() throws Exception {
+        mContext.getSystemService(NpuManager.class).setPolicy(NPU_MODEL_POLICY_TURN_TAKING, null);
+
+        // First load background model
+        CountDownLatch backgroundLatch = new CountDownLatch(1);
+        CountDownLatch unloadLatch = new CountDownLatch(1);
+        CountDownLatch cancelLatch = new CountDownLatch(1);
+        TestModelLoadRequest backgroundRequest =
+                new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        ITestModelLoadRequestCallback backgroundCallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    private ITestModelLoadStatusListener mListener;
+
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener)
+                            throws RemoteException {
+                        if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            mListener = listener;
+                            mListener.notifyModelLoaded(request);
+                            backgroundLatch.countDown();
+                        }
+                    }
+
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {
+                        try {
+                            unloadLatch.countDown();
+                            mListener.notifyModelUnloaded(request);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {}
+                };
+        mBackgroundNpuManager.requestLoadModel(backgroundRequest, backgroundCallback);
+        assertTrue(backgroundLatch.await(5, TimeUnit.SECONDS));
+
+        waitForAppResume(FOREGROUND_PACKAGE_NAME);
+        assertTrue(mBackgroundAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+        assertTrue(mForegroundedAppImportanceUpdated.await(10, TimeUnit.SECONDS));
+        CountDownLatch waitLatch = new CountDownLatch(1);
+        CountDownLatch canLoadLatch = new CountDownLatch(1);
+        TestModelLoadRequest foregroundRequest =
+                new TestModelLoadRequest(1, NPU_MODEL_SIZE_GREATER_THAN_2G, 100);
+        ITestModelLoadRequestCallback foregroundCallback =
+                new ITestModelLoadRequestCallback.Stub() {
+                    public void onCanLoadModel(
+                            TestModelLoadRequest request,
+                            int status,
+                            ITestModelLoadStatusListener listener)
+                            throws RemoteException {
+                        if (status == NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD) {
+                            waitLatch.countDown();
+                        } else if (status == NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW) {
+                            canLoadLatch.countDown();
+                            listener.notifyModelLoaded(request);
+                        }
+                    }
+
+                    public void onRequestUnloadModel(TestModelLoadRequest request) {}
+
+                    public void onModelLoadRequestComplete(
+                            TestModelLoadRequest request, int status) {
+                        if (status == NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED) {
+                            assertEquals(foregroundRequest.id, request.id);
+                            cancelLatch.countDown();
+                        }
+                    }
+                };
+        mForegroundNpuManager.requestLoadModel(foregroundRequest, foregroundCallback);
+        assertTrue(waitLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(unloadLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(canLoadLatch.await(5, TimeUnit.SECONDS));
+
+        mForegroundNpuManager.cancelLoadModel(foregroundRequest);
+        assertTrue(cancelLatch.await(5, TimeUnit.SECONDS));
+    }
+
     /**
      * This tests that the first model gets unloaded after it finishes its task, and the second
      * model gets loaded.

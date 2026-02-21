@@ -25,9 +25,10 @@ import android.annotation.IntRange;
 import android.annotation.NonNull;
 import android.annotation.SystemApi;
 import android.npumanager.NpuManager.NpuModelPriority;
+import android.os.Binder;
 import android.os.Parcel;
 import android.os.Parcelable;
-import android.os.Process;
+
 import java.util.Objects;
 
 /**
@@ -43,7 +44,7 @@ public class ModelLoadRequest implements Parcelable {
 
     ModelLoadRequest(ModelLoadRequestParcelable parcelable) {
         mParcelable = parcelable;
-        mUid = Process.myUid();
+        mUid = Binder.getCallingUid();
     }
 
     ModelLoadRequestParcelable getParcelable() {
