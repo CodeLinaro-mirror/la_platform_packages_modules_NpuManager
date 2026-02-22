@@ -27,6 +27,7 @@ import static android.npumanager.NpuManager.NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G;
 import static android.npumanager.NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB;
 import static android.os.Process.INVALID_UID;
+
 import static com.android.server.npumanager.ModelLoadRequestInfo.RequestState.LOADED;
 import static com.android.server.npumanager.ModelLoadRequestInfo.RequestState.NOT_PRIORITIZED;
 import static com.android.server.npumanager.ModelLoadRequestInfo.RequestState.PENDING_LOAD;
@@ -38,14 +39,15 @@ import android.hardware.npu.EndReason;
 import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
-import android.npumanager.ModelLoadRequestUtils;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.util.Log;
+
 import com.android.internal.annotations.GuardedBy;
+
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -180,7 +182,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
         // processing.
         int requestedAndLoadedBudget =
                 requests.keySet().stream()
-                        .filter(x -> request.getId() != x.getId())
+                        .filter(x -> request != x)
                         .mapToInt(
                                 modelLoadRequest ->
                                         getModelWeightFromSizeOrThrow(modelLoadRequest.getSize()))
@@ -194,9 +196,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
 
             if (availableBudget >= getModelWeightFromSizeOrThrow(request.getSize())) {
                 Log.d(TAG, "canLoadModel: CAN_LOAD_NOW");
-                callback.onCanLoadModel(
-                        ModelLoadRequestUtils.getParcelable(request),
-                        NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
+                callback.onCanLoadModel(NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
                 return;
             }
 
@@ -261,9 +261,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
 
                 if (unloadingModels) {
                     Log.d(TAG, "canLoadModel: WAIT_FOR_UNLOAD");
-                    callback.onCanLoadModel(
-                            ModelLoadRequestUtils.getParcelable(request),
-                            NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD);
+                    callback.onCanLoadModel(NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD);
                 }
             } else {
                 Log.d(TAG, "canLoadModel: NOT_PRIORITIZED");
@@ -274,9 +272,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                                 ModelLoadRequestInfo.RequestState.NOT_PRIORITIZED);
                     }
                 }
-                callback.onCanLoadModel(
-                        ModelLoadRequestUtils.getParcelable(request),
-                        NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED);
+                callback.onCanLoadModel(NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED);
             }
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to call onCanLoadModel", e);
@@ -298,7 +294,6 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     mRequests.get(request) != null ? mRequests.get(request).getCallback() : null;
             if (callback != null) {
                 callback.onModelLoadRequestComplete(
-                        ModelLoadRequestUtils.getParcelable(request),
                         NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED);
             }
         } catch (RemoteException e) {
@@ -337,7 +332,6 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     mRequests.get(request) != null ? mRequests.get(request).getCallback() : null;
             if (callback != null) {
                 callback.onModelLoadRequestComplete(
-                        ModelLoadRequestUtils.getParcelable(request),
                         NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE);
             }
         } catch (RemoteException e) {
@@ -592,8 +586,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                     IModelLoadCallback cb = modelLoadRequestInfo.getCallback();
                     if (cb != null) {
                         modelLoadRequestInfo.setState(PENDING_LOAD);
-                        cb.onCanLoadModel(
-                                ModelLoadRequestUtils.getParcelable(request), statusForIdealModels);
+                        cb.onCanLoadModel(statusForIdealModels);
                     } else {
                         Log.w(TAG, "No callback for request " + request);
                     }
@@ -616,7 +609,7 @@ class BudgetModelLoadingPolicy extends NpuModelLoadingPolicy {
                                 + ", ModelRequestInfo="
                                 + modelLoadRequestInfo);
                 try {
-                    cb.onRequestUnloadModel(ModelLoadRequestUtils.getParcelable(request));
+                    cb.onRequestUnloadModel();
                 } catch (RemoteException e) {
                     Log.e(TAG, "Failed to call onRequestUnloadModel", e);
                 }

@@ -27,7 +27,6 @@ import android.hardware.npu.EndReason;
 import android.hardware.npu.WorkInfo;
 import android.npumanager.IModelLoadCallback;
 import android.npumanager.ModelLoadRequest;
-import android.npumanager.ModelLoadRequestUtils;
 import android.os.RemoteException;
 
 import com.android.internal.annotations.GuardedBy;
@@ -52,9 +51,7 @@ class StatusQuoModelLoadingPolicy extends NpuModelLoadingPolicy {
             synchronized (this) {
                 mCallbacks.put(request, callback);
             }
-            callback.onCanLoadModel(
-                    ModelLoadRequestUtils.getParcelable(request),
-                    NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
+            callback.onCanLoadModel(NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW);
         } catch (RemoteException e) {
             // ignore
         }
@@ -68,7 +65,6 @@ class StatusQuoModelLoadingPolicy extends NpuModelLoadingPolicy {
             }
             if (callback != null) {
                 callback.onModelLoadRequestComplete(
-                        ModelLoadRequestUtils.getParcelable(request),
                         NPU_MODEL_LOAD_REQUEST_STATUS_CANCELLED);
                 synchronized (this) {
                     mCallbacks.remove(request);
@@ -91,7 +87,6 @@ class StatusQuoModelLoadingPolicy extends NpuModelLoadingPolicy {
             }
             if (callback != null) {
                 callback.onModelLoadRequestComplete(
-                        ModelLoadRequestUtils.getParcelable(request),
                         NPU_MODEL_LOAD_REQUEST_STATUS_COMPLETE);
                 synchronized (this) {
                     mCallbacks.remove(request);
