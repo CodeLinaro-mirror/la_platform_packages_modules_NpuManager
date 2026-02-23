@@ -54,13 +54,17 @@ Java_com_android_npumanager_delegateapp_MainActivity_runNnapiInference(JNIEnv* e
         return env->NewStringUTF("Error: Failed to get input data");
     }
 
+    int status = 0;
     std::string result =
             RunNnapiInference(reinterpret_cast<const char*>(model_data), model_size,
-                              reinterpret_cast<const char*>(input_data), input_size);
+                              reinterpret_cast<const char*>(input_data), input_size,
+                              &status);
 
     env->ReleaseByteArrayElements(model_buffer, model_data, JNI_ABORT);
     env->ReleaseByteArrayElements(input_buffer, input_data, JNI_ABORT);
-
+    if (status != 0) {
+        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), result.c_str());
+    }
 
     return env->NewStringUTF(result.c_str());
 }

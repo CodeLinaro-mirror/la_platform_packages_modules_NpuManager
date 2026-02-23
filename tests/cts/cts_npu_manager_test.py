@@ -95,6 +95,44 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
             return False
         return output
 
+    def test_cant_access_npu_with_nnapi_without_hardware_feature(self):
+        """
+        Tests that an app without the NPU hardware feature cannot access the NPU using NNAPI.
+        1. Start an app that does not have the <uses-feature android:name="android.hardware.npu">
+        in its manifest.
+        2. Verify that it cannot run an inference.
+        3. Start an app that does have the feature.
+        4. Verify that it can run an inference.
+        """
+        asserts.skip_if(not self._get_device_config(_MACHINE_LEARNING_NAMESPACE, _NPU_MANAGER_ENABLED_FLAG),
+                        f"{_NPU_MANAGER_ENABLED_FLAG} must be enabled for this test.")
+
+        # App without the feature
+        self.dut.no_feature_snippet.startActivity()
+        inference_handler = (
+            self.dut.no_feature_snippet.asyncWaitForInferenceFailed(
+                'inference_no_feature', _NO_FEATURE_APP_PACKAGE_NAME
+            )
+        )
+        self.dut.no_feature_snippet.runNnapiNpuInference()
+        inference_event = inference_handler.waitAndGet('inference_no_feature', 30)
+        asserts.assert_is_not_none(
+            inference_event, "Inference did not fail for app without feature."
+        )
+
+        # App with the feature
+        self.dut.background_delegate_snippet.startActivity()
+        inference_handler = (
+            self.dut.background_delegate_snippet.asyncWaitForInferenceComplete(
+                'inference_with_feature', _BACKGROUND_APP_PACKAGE_NAME
+            )
+        )
+        self.dut.background_delegate_snippet.runNnapiNpuInference()
+        inference_event = inference_handler.waitAndGet('inference_with_feature', 30)
+        asserts.assert_is_not_none(
+            inference_event, "Inference did not complete for app with feature."
+        )
+
     def test_cant_access_npu_without_hardware_feature(self):
         """
         Tests that an app without the NPU hardware feature cannot access the NPU.
