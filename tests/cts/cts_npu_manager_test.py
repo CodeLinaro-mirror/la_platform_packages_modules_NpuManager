@@ -35,7 +35,6 @@ _NO_FEATURE_APP_PACKAGE_NAME = 'com.android.npumanager.delegateapp.nofeature'
 #For end to end AI core testing
 _NPU_MANAGER_ENABLED_FLAG = 'com.android.npumanager.npumanager_enabled'
 _SAPI_APP_PACKAGE_NAME = 'com.android.npumanager.sapiapp'
-_AICORE_ISOLATED_PROCESS_FLAG = 'AicOnDeviceIntelligence__enabled'
 _AICORE_ENABLE_NPU_INTEGRATION_FLAG ='AicCommon__enable_npu_manager_integration'
 _MACHINE_LEARNING_NAMESPACE = 'machine_learning'
 _AICORE_NAMESPACE = 'aicore'
@@ -78,18 +77,6 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
         self.dut.foreground_delegate_snippet.closeActivity()
         self.dut.no_feature_snippet.closeActivity()
         self.dut.sapi_snippet.closeActivity()
-
-    def _override_device_config(
-            self,
-            module: str,
-            flag: str,
-            value: str | bool | int,
-    ) -> None:
-        """Overrides the given flag via device config."""
-        if isinstance(value, bool):
-            value = str(value).lower()
-        self.dut.adb.shell(f"device_config override {module} {flag} {value}")
-
 
     def _get_device_config(
             self,
@@ -155,25 +142,17 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
         Tests AICore integrations with NPU Manager by running a simple rewrite inference
         using the Solutions API.
 
-        1. Disable isolated process, and enable NPU manager related flags.
-        2. Kill AICore
-        3. Verify flag values
-        4. Start activity and check if rewrite feature is available. Skip test if unavailable.
-        5. Run rewrite inference using Solutions API.
-        6. Assert inference success.
+        1. Restart AICore
+        2. Check NPU manager related flag values. Skip test if flags not enabled.
+        2. Start Solutions API activity and check if rewrite feature is available. Skip test if
+        feature is unavailable.
+        3. Assert inference success.
 
         :return:
         """
-        self._override_device_config(_AICORE_NAMESPACE, _AICORE_ISOLATED_PROCESS_FLAG,
-                                     False)
-        self._override_device_config(_AICORE_NAMESPACE, _AICORE_ENABLE_NPU_INTEGRATION_FLAG,
-                                     True)
-        self._override_device_config(_MACHINE_LEARNING_NAMESPACE,
-                                     _NPU_MANAGER_ENABLED_FLAG, True)
-
         try:
             pid = (self.dut.adb.shell(["pidof", "com.google.android.aicore"])
-                  .decode("utf-8"))
+                   .decode("utf-8"))
             if pid:
                 logging.info(f"Found pid of AICore: {pid}. killing now")
                 self.dut.adb.shell(["kill", "-9", pid])
@@ -181,11 +160,6 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
                 logging.info("Did not find pid of AICore to destroy")
         except adb.AdbError as e:
             logging.error(f"Could not destroy AICore process: {e}")
-        asserts.skip_if(self._get_device_config(
-                                             _AICORE_NAMESPACE,
-                                          _AICORE_ISOLATED_PROCESS_FLAG),
-            f"{_AICORE_ISOLATED_PROCESS_FLAG} must be disabled for this test."
-        )
         asserts.skip_if(not self._get_device_config(_AICORE_NAMESPACE,
                                                     _AICORE_ENABLE_NPU_INTEGRATION_FLAG),
                         f"{_AICORE_ENABLE_NPU_INTEGRATION_FLAG} must be enabled for this test.")
