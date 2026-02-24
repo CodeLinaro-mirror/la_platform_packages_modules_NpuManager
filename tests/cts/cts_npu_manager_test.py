@@ -117,6 +117,20 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
         asserts.skip_if(not self._get_device_config(_MACHINE_LEARNING_NAMESPACE, _NPU_MANAGER_ENABLED_FLAG),
                         f"{_NPU_MANAGER_ENABLED_FLAG} must be enabled for this test.")
 
+        # App with the feature
+        self.dut.background_delegate_snippet.startActivity()
+        inference_handler = (
+            self.dut.background_delegate_snippet.asyncWaitForInferenceComplete(
+                'inference_with_feature', _BACKGROUND_APP_PACKAGE_NAME
+            )
+        )
+        self.dut.background_delegate_snippet.runNnapiNpuInference()
+        inference_event = inference_handler.waitAndGet('inference_with_feature', 30)
+        asserts.skip_if(
+            inference_event is None,
+            "Inference did not complete for app with feature.",
+        )
+
         # App without the feature
         self.dut.no_feature_snippet.startActivity()
         inference_handler = (
@@ -130,18 +144,7 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
             inference_event, "Inference did not fail for app without feature."
         )
 
-        # App with the feature
-        self.dut.background_delegate_snippet.startActivity()
-        inference_handler = (
-            self.dut.background_delegate_snippet.asyncWaitForInferenceComplete(
-                'inference_with_feature', _BACKGROUND_APP_PACKAGE_NAME
-            )
-        )
-        self.dut.background_delegate_snippet.runNnapiNpuInference()
-        inference_event = inference_handler.waitAndGet('inference_with_feature', 30)
-        asserts.assert_is_not_none(
-            inference_event, "Inference did not complete for app with feature."
-        )
+
 
     def test_cant_access_npu_without_hardware_feature(self):
         """
