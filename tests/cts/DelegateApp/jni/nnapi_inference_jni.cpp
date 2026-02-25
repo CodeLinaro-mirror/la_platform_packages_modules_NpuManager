@@ -64,6 +64,7 @@ Java_com_android_npumanager_delegateapp_MainActivity_runNnapiInference(JNIEnv* e
     env->ReleaseByteArrayElements(input_buffer, input_data, JNI_ABORT);
     if (status != 0) {
         env->ThrowNew(env->FindClass("java/lang/RuntimeException"), result.c_str());
+        return nullptr;
     }
 
     return env->NewStringUTF(result.c_str());

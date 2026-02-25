@@ -21,7 +21,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.util.Log;
+
 import androidx.test.platform.app.InstrumentationRegistry;
+
 import com.google.android.mobly.snippet.Snippet;
 import com.google.android.mobly.snippet.event.EventCache;
 import com.google.android.mobly.snippet.event.SnippetEvent;
@@ -37,6 +39,14 @@ public class DelegateSnippet implements Snippet {
 
     public DelegateSnippet() {
         context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+    }
+
+    @Rpc(description = "Checks if the run-inference tool exists on the device.")
+    public boolean checkRunInferenceExists() {
+        if (activity != null) {
+            return activity.checkRunInferenceExists();
+        }
+        return false;
     }
 
     @AsyncRpc(description = "Wait for indication that the inference is complete")
@@ -64,6 +74,19 @@ public class DelegateSnippet implements Snippet {
                         MainActivity.ACTION_INFERENCE_FAILED,
                         packageName),
                 new IntentFilter(MainActivity.ACTION_INFERENCE_FAILED),
+                Context.RECEIVER_EXPORTED);
+    }
+
+    @AsyncRpc(description = "Wait for indication that the model is loaded")
+    public void asyncWaitForModelLoaded(String callbackId, String eventName, String packageName) {
+        context.registerReceiver(
+                new SnippetBroadcastReceiver(
+                        context,
+                        new SnippetEvent(callbackId, eventName),
+                        eventName,
+                        MainActivity.ACTION_MODEL_LOADED,
+                        packageName),
+                new IntentFilter(MainActivity.ACTION_MODEL_LOADED),
                 Context.RECEIVER_EXPORTED);
     }
 
@@ -154,14 +177,6 @@ public class DelegateSnippet implements Snippet {
                             }
                         })
                 .start();
-    }
-
-    @Rpc(description = "Check if run inference tool exists")
-    public boolean checkRunInferenceExists() {
-        if (activity != null) {
-            return activity.checkRunInferenceExists();
-        }
-        return false;
     }
 
     /** BroadcastReceiver subclass that posts SnippetEvent when intent is received. */

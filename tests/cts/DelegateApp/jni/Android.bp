@@ -54,3 +54,40 @@ cc_library_shared {
         all: true,
     },
 }
+
+cc_library_shared {
+    name: "librunmodelwithlitertjni",
+    relative_install_path: "lib",
+    srcs: [
+        "run_model_with_litert_jni.cpp",
+        "run_model_with_litert.cpp",
+    ],
+    local_include_dirs: ["."],
+    sdk_version: "current",
+
+    static_libs: [
+        "libflatbuffers-cpp",
+        "libtflite_static",
+    ],
+    header_libs: [
+        "jni_headers",
+        "flatbuffer_headers",
+    ],
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wno-unused-parameter",
+        "-Wno-missing-field-initializers",
+    ],
+    shared_libs: [
+        "liblog",
+        "libneuralnetworks",
+    ],
+    stl: "libc++_static",
+    include_dirs: [
+        "external/tensorflow",
+    ],
+    strip: {
+        all: true,
+    },
+}

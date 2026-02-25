@@ -1,0 +1,6 @@
+TestBeds:
+- Name: LocalTestBed
+  Controllers:
+    AndroidDevice: '*'
+  TestParams:
+    use_litert_for_inference: false

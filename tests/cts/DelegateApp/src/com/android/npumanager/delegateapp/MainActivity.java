@@ -28,6 +28,7 @@ import android.npumanager.NpuManager;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.util.Log;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -43,6 +44,8 @@ public class MainActivity extends Activity {
             + "ACTION_INFERENCE_COMPLETE";
     public static final String ACTION_INFERENCE_FAILED =
             "com.android.npumanager.delegateapp." + "ACTION_INFERENCE_FAILED";
+    public static final String ACTION_MODEL_LOADED =
+            "com.android.npumanager.delegateapp." + "ACTION_MODEL_LOADED";
 
     private byte[] modelBuffer = null;
 
@@ -109,10 +112,7 @@ public class MainActivity extends Activity {
                             if (useNnapi) {
                                 loadNnapiModel();
                             }
-                            Log.i(
-                                    TAG,
-                                    "Finished loading model. Calling notifyModelLoaded() now "
-                                            + "and running NPU inference");
+                            Log.i(TAG, "Finished loading model. Calling notifyModelLoaded() now");
                             if (mListener != null) {
                                 try {
                                     mListener.notifyModelLoaded(request);
@@ -121,11 +121,9 @@ public class MainActivity extends Activity {
                                 }
                             }
 
-                            if (useNnapi) {
-                                runNnapiInference();
-                            } else {
-                                runNpuInference();
-                            }
+                            Intent intent = new Intent(ACTION_MODEL_LOADED);
+                            intent.putExtra("package", getPackageName());
+                            sendBroadcast(intent);
                         } else {
                             Log.w(
                                     TAG,
@@ -280,8 +278,11 @@ public class MainActivity extends Activity {
 
     static {
         System.loadLibrary("nnapidelegateappjni");
+        System.loadLibrary("runmodelwithlitertjni");
     }
 
     // Native method to run inference
     public native String runNnapiInference(byte[] modelBuffer, byte[] inputBuffer);
+
+    public native String runLiteRtInference();
 }
