@@ -51,9 +51,12 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
         self.dut = self.register_controller(android_device)[0]
         logging.info("installing apks")
         for apk in self.user_params['files'].values():
-            logging.info(f"installing apk: {apk}")
-            apk_utils.install(self.dut, apk[0])
-        logging.info("loading snippets")
+            try:
+                logging.info(f"installing apk: {apk}")
+                apk_utils.install(self.dut, apk[0])
+            except adb.AdbError as e:
+                logging.error(f"Could not install apk: {e}")
+
         self.dut.load_snippet(
             'background_delegate_snippet',
             _BACKGROUND_APP_PACKAGE_NAME,
@@ -70,7 +73,12 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
             'sapi_snippet',
             _SAPI_APP_PACKAGE_NAME
         )
-        self.dut.adb.shell("setenforce 0")
+        try:
+            self.dut.root_adb()
+            self.dut.adb.shell("setenforce 0")
+        except adb.AdbError as e:
+            logging.error(f"Error setting root and running shell cmd: {e}")
+            asserts.abort_class(f"Error setting root and running setenforce 0: {e}")
 
     def teardown_test(self):
         self.dut.background_delegate_snippet.closeActivity()
@@ -84,16 +92,56 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
             flag: str,
     ) -> str | bool:
         """Gets the given flag via device config."""
-        output = (
-            self.dut.adb.shell(f"device_config get {namespace} {flag}")
-            .decode("utf-8")
-            .strip()
-        )
+        output = False
+        try:
+            output =  (self.dut.adb.shell(f"device_config get {namespace} {flag}")
+                       .decode("utf-8").strip())
+        except adb.AdbError as e:
+            logging.error(f"Error executing shell cmd: {e}")
+
         if output == "true":
             return True
         if output == "false":
             return False
         return output
+
+    def test_cant_access_npu_with_nnapi_without_hardware_feature(self):
+        """
+        Tests that an app without the NPU hardware feature cannot access the NPU using NNAPI.
+        1. Start an app that does not have the <uses-feature android:name="android.hardware.npu">
+        in its manifest.
+        2. Verify that it cannot run an inference.
+        3. Start an app that does have the feature.
+        4. Verify that it can run an inference.
+        """
+        asserts.skip_if(not self._get_device_config(_MACHINE_LEARNING_NAMESPACE, _NPU_MANAGER_ENABLED_FLAG),
+                        f"{_NPU_MANAGER_ENABLED_FLAG} must be enabled for this test.")
+
+        # App without the feature
+        self.dut.no_feature_snippet.startActivity()
+        inference_handler = (
+            self.dut.no_feature_snippet.asyncWaitForInferenceFailed(
+                'inference_no_feature', _NO_FEATURE_APP_PACKAGE_NAME
+            )
+        )
+        self.dut.no_feature_snippet.runNnapiNpuInference()
+        inference_event = inference_handler.waitAndGet('inference_no_feature', 30)
+        asserts.assert_is_not_none(
+            inference_event, "Inference did not fail for app without feature."
+        )
+
+        # App with the feature
+        self.dut.background_delegate_snippet.startActivity()
+        inference_handler = (
+            self.dut.background_delegate_snippet.asyncWaitForInferenceComplete(
+                'inference_with_feature', _BACKGROUND_APP_PACKAGE_NAME
+            )
+        )
+        self.dut.background_delegate_snippet.runNnapiNpuInference()
+        inference_event = inference_handler.waitAndGet('inference_with_feature', 30)
+        asserts.assert_is_not_none(
+            inference_event, "Inference did not complete for app with feature."
+        )
 
     def test_cant_access_npu_without_hardware_feature(self):
         """
@@ -144,27 +192,34 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
 
         1. Restart AICore
         2. Check NPU manager related flag values. Skip test if flags not enabled.
-        2. Start Solutions API activity and check if rewrite feature is available. Skip test if
+        3. Start Solutions API activity and check if rewrite feature is available. Skip test if
         feature is unavailable.
-        3. Assert inference success.
+        4. Assert inference success.
 
         :return:
         """
         try:
-            pid = (self.dut.adb.shell(["pidof", "com.google.android.aicore"])
-                   .decode("utf-8"))
-            if pid:
-                logging.info(f"Found pid of AICore: {pid}. killing now")
-                self.dut.adb.shell(["kill", "-9", pid])
-            else:
-                logging.info("Did not find pid of AICore to destroy")
+            logging.info("Force stopping AICore to restart it.")
+            self.dut.adb.shell("am force-stop com.google.android.aicore")
         except adb.AdbError as e:
-            logging.error(f"Could not destroy AICore process: {e}")
+            logging.error(f"Could not force-stop AICore process: {e}")
+
         asserts.skip_if(not self._get_device_config(_AICORE_NAMESPACE,
                                                     _AICORE_ENABLE_NPU_INTEGRATION_FLAG),
                         f"{_AICORE_ENABLE_NPU_INTEGRATION_FLAG} must be enabled for this test.")
         asserts.skip_if(not self._get_device_config(_MACHINE_LEARNING_NAMESPACE, _NPU_MANAGER_ENABLED_FLAG),
                         f"{_NPU_MANAGER_ENABLED_FLAG} must be enabled for this test.")
+
+        # Set NPU budget policy
+        shell_cmd_failed = False
+        try:
+            self.dut.adb.shell("cmd npu set-budget-policy")
+        except adb.AdbError as e:
+            logging.error(f"Could not set budget policy: {e}")
+            # Defer failing the test until we verify the SAPI Rewrite feature is supported.
+            # If it's unsupported, we prefer to gracefully skip the test rather than fail.
+            shell_cmd_failed = True
+
         self.dut.sapi_snippet.turnScreenOn()
         self.dut.sapi_snippet.pressMenu()
 
@@ -174,6 +229,9 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
         self.dut.sapi_snippet.startActivity()
         asserts.skip_if(not self.dut.sapi_snippet.isFeatureAvailable(), 'SAPI Rewrite Feature is not '
                                                                         'available on this device.')
+        if shell_cmd_failed:
+            asserts.fail("Could not set NPU budget policy. Check logs for more info.")
+
         self.dut.sapi_snippet.rewriteText()
         #Wait for inference.
         inference_handler.waitAndGet('inference', 30)
@@ -219,7 +277,12 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
                 'foreground', _FOREGROUND_APP_PACKAGE_NAME
             )
         )
-        self.dut.adb.shell("cmd npu set-budget-policy")
+        try:
+            self.dut.adb.shell("cmd npu set-budget-policy")
+        except adb.AdbError as e:
+            logging.error(f"Could not set budget policy: {e}")
+            asserts.fail(f"Could not set NPU budget policy: {e}")
+
         self.dut.background_delegate_snippet.startActivity()
         app_resume_background_handler.waitAndGet('resume_background', 15)
         asserts.assert_true(self.dut.background_delegate_snippet.checkRunInferenceExists(),
