@@ -20,7 +20,6 @@ import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_BUDGET;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_STATUS_QUO;
 import static android.npumanager.NpuManager.NPU_MODEL_POLICY_TURN_TAKING;
-import static android.os.Process.SYSTEM_UID;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -47,14 +46,11 @@ import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.Trace;
-import android.os.UserHandle;
 import android.util.Log;
-
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.util.DumpUtils;
 import com.android.modules.utils.BasicShellCommandHandler;
 import com.android.npumanager.Flags;
-
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.Objects;
@@ -193,10 +189,6 @@ public final class NpuManagerServiceImpl extends INpuManagerService.Stub {
     }
 
     static void enforceModelManagerPermissions(Context context) {
-        if (UserHandle.getAppId(Binder.getCallingUid()) == SYSTEM_UID) {
-            return;
-        }
-
         if (context.checkCallingPermission(android.Manifest.permission.ACCESS_NPU_MODEL_MANAGER_API)
                 != PERMISSION_GRANTED) {
             throw new SecurityException("Model Manager permission denied");
