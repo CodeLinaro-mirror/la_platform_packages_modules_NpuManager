@@ -29,7 +29,10 @@ COMMON_STATIC_LIBS = [
     "androidx.startup_startup-runtime",
 
 ]
-COMMON_JNI_LIBS = ["libnnapidelegateappjni"]
+COMMON_JNI_LIBS = [
+    "libnnapidelegateappjni",
+    "librunmodelwithlitertjni",
+]
 
 java_defaults {
     name: "NpuTestAppDefaults",

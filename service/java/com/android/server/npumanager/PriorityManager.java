@@ -184,12 +184,13 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
         }
     }
 
-    private PriorityInfo createPriorityInfo(@NonNull PackageInfo packageInfo, int priority) {
+    private PriorityInfo createPriorityInfo(
+            int uid, @NonNull PackageInfo packageInfo, int priority) {
         Objects.requireNonNull(packageInfo);
         Objects.requireNonNull(packageInfo.applicationInfo);
 
         SchedulingConfig schedulingConfig = new SchedulingConfig();
-        schedulingConfig.uid = packageInfo.applicationInfo.uid;
+        schedulingConfig.uid = uid;
         schedulingConfig.priority = priority;
         schedulingConfig.canAttributeOtherUid = canAttributeOtherUid(packageInfo);
         schedulingConfig.hasDirectAccess = true;
@@ -253,6 +254,7 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
                 int uid = Objects.requireNonNull(packageInfo.applicationInfo).uid;
                 PriorityInfo info =
                         createPriorityInfo(
+                                uid,
                                 packageInfo,
                                 getPriorityForImportance(uid, am.getUidImportance(uid)));
                 mPriorities.put(uid, info);
@@ -306,7 +308,7 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
         ActivityManager activityManager = mContext.getSystemService(ActivityManager.class);
         int priority = getPriorityForImportance(uid, activityManager.getUidImportance(uid));
 
-        PriorityInfo priorityInfo = createPriorityInfo(packageInfo, priority);
+        PriorityInfo priorityInfo = createPriorityInfo(uid, packageInfo, priority);
         if (!priorityInfo.getSchedulingConfig().hasDirectAccess) {
             Log.d(
                     TAG,
@@ -382,7 +384,8 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
 
                         mPriorities.put(
                                 uid,
-                                createPriorityInfo(packageInfo, SchedulingConfig.MAX_PRIORITY));
+                                createPriorityInfo(
+                                        uid, packageInfo, SchedulingConfig.MAX_PRIORITY));
                         Log.d(
                                 TAG,
                                 "Adding new package with NPU feature: " + packageInfo.packageName);
@@ -461,6 +464,7 @@ public final class PriorityManager implements ActivityManager.OnUidImportanceLis
                             // it.
                             currentInfo =
                                     createPriorityInfo(
+                                            uid,
                                             packageInfo,
                                             getPriorityForImportance(
                                                     uid, am.getUidImportance(uid)));

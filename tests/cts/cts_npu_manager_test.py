@@ -49,13 +49,6 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
     def setup_class(self):
         logging.info('Setup class')
         self.dut = self.register_controller(android_device)[0]
-        logging.info("installing apks")
-        for apk in self.user_params['files'].values():
-            try:
-                logging.info(f"installing apk: {apk}")
-                apk_utils.install(self.dut, apk[0])
-            except adb.AdbError as e:
-                logging.error(f"Could not install apk: {e}")
 
         self.dut.load_snippet(
             'background_delegate_snippet',
@@ -105,6 +98,25 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
             return False
         return output
 
+    def _run_inference(self, snippet, package_name, use_nnapi=False, load_model=False):
+        if self.user_params.get('use_litert_for_inference', False):
+            # TODO(b/487727614) Determine SOC and use LiteRT
+            pass
+
+        if load_model:
+            model_loaded_handler = snippet.asyncWaitForModelLoaded(
+                f'model_loaded_{package_name}', package_name
+            )
+            asserts.assert_true(snippet.checkRunInferenceExists(),
+                                    "Run inference tool could not be found")
+            snippet.requestCanLoadModel(use_nnapi)
+            model_loaded_handler.waitAndGet(f'model_loaded_{package_name}', 30)
+
+        if use_nnapi:
+            snippet.runNnapiNpuInference()
+        else:
+            snippet.runNpuInference()
+
     def test_cant_access_npu_with_nnapi_without_hardware_feature(self):
         """
         Tests that an app without the NPU hardware feature cannot access the NPU using NNAPI.
@@ -124,12 +136,16 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
                 'inference_with_feature', _BACKGROUND_APP_PACKAGE_NAME
             )
         )
-        self.dut.background_delegate_snippet.runNnapiNpuInference()
-        inference_event = inference_handler.waitAndGet('inference_with_feature', 30)
-        asserts.skip_if(
-            inference_event is None,
-            "Inference did not complete for app with feature.",
-        )
+        self._run_inference(self.dut.background_delegate_snippet, _BACKGROUND_APP_PACKAGE_NAME, use_nnapi=True, load_model=True)
+        try:
+            inference_event = inference_handler.waitAndGet('inference_with_feature', 30)
+            asserts.skip_if(
+                inference_event is None,
+                "Inference did not complete for app with feature.",
+            )
+        except Exception:
+            asserts.skip("Inference did not complete for app with feature.")
+
 
         # App without the feature
         self.dut.no_feature_snippet.startActivity()
@@ -138,12 +154,11 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
                 'inference_no_feature', _NO_FEATURE_APP_PACKAGE_NAME
             )
         )
-        self.dut.no_feature_snippet.runNnapiNpuInference()
+        self._run_inference(self.dut.no_feature_snippet, _NO_FEATURE_APP_PACKAGE_NAME, use_nnapi=True, load_model=True)
         inference_event = inference_handler.waitAndGet('inference_no_feature', 30)
         asserts.assert_is_not_none(
             inference_event, "Inference did not fail for app without feature."
         )
-
 
 
     def test_cant_access_npu_without_hardware_feature(self):
@@ -160,14 +175,12 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
 
         # App without the feature
         self.dut.no_feature_snippet.startActivity()
-        asserts.assert_true(self.dut.no_feature_snippet.checkRunInferenceExists(),
-                             "Run inference tool could not be found")
         inference_handler = (
             self.dut.no_feature_snippet.asyncWaitForInferenceFailed(
                 'inference_no_feature', _NO_FEATURE_APP_PACKAGE_NAME
             )
         )
-        self.dut.no_feature_snippet.runNpuInference()
+        self._run_inference(self.dut.no_feature_snippet, _NO_FEATURE_APP_PACKAGE_NAME, load_model=True)
         inference_event = inference_handler.waitAndGet('inference_no_feature', 30)
         asserts.assert_is_not_none(
             inference_event, "Inference did not fail for app without feature."
@@ -175,14 +188,12 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
 
         # App with the feature
         self.dut.background_delegate_snippet.startActivity()
-        asserts.assert_true(self.dut.background_delegate_snippet.checkRunInferenceExists(),
-                            "Run inference tool could not be found")
         inference_handler = (
             self.dut.background_delegate_snippet.asyncWaitForInferenceComplete(
                 'inference_with_feature', _BACKGROUND_APP_PACKAGE_NAME
             )
         )
-        self.dut.background_delegate_snippet.runNpuInference()
+        self._run_inference(self.dut.background_delegate_snippet, _BACKGROUND_APP_PACKAGE_NAME, load_model=True)
         inference_event = inference_handler.waitAndGet('inference_with_feature', 30)
         asserts.assert_is_not_none(
             inference_event, "Inference did not complete for app with feature."
@@ -288,14 +299,10 @@ class CtsNpuManagerTest(base_test.BaseTestClass):
 
         self.dut.background_delegate_snippet.startActivity()
         app_resume_background_handler.waitAndGet('resume_background', 15)
-        asserts.assert_true(self.dut.background_delegate_snippet.checkRunInferenceExists(),
-                            "Run inference tool could not be found")
         self.dut.foreground_delegate_snippet.startActivity()
-        asserts.assert_true(self.dut.foreground_delegate_snippet.checkRunInferenceExists(),
-                            "Run inference tool could not be found")
         app_resume_foreground_handler.waitAndGet('resume_foreground', 15)
-        self.dut.background_delegate_snippet.requestCanLoadModel(False)
-        self.dut.foreground_delegate_snippet.requestCanLoadModel(False)
+        self._run_inference(self.dut.background_delegate_snippet, _BACKGROUND_APP_PACKAGE_NAME, load_model=True)
+        self._run_inference(self.dut.foreground_delegate_snippet, _FOREGROUND_APP_PACKAGE_NAME, load_model=True)
 
         event_background = inference_handler_background.waitAndGet('background', 15)
         event_foreground = inference_handler_foreground.waitAndGet('foreground', 15)

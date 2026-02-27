@@ -31,4 +31,5 @@
     <option name="build_apk" key="file" value="BackgroundNpuTestApp.apk" />
     <option name="build_apk" key="file" value="ForegroundNpuTestApp.apk" />
     <option name="build_apk" key="file" value="NoFeatureNpuTestApp.apk" />
+    <option name="mobly_config" key="file" value="mobly_config.yaml" />
 </configuration>

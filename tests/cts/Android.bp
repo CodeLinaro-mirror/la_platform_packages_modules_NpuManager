@@ -45,6 +45,7 @@ python_test_host {
         "general-tests",
         "cts",
     ],
+    data: ["mobly_config.yaml"],
 }
 
 android_test {
