@@ -19,6 +19,8 @@ package com.android.server.npumanager;
 import android.hardware.npu.EndReason;
 import android.hardware.npu.StartReason;
 import android.hardware.npu.WorkInfo;
+import android.npumanager.ModelLoadRequest;
+import android.npumanager.NpuManager;
 
 public class MetricsLogger {
     private static final String TAG = "MetricsLogger";
@@ -46,6 +48,86 @@ public class MetricsLogger {
 
     public void logAppBlocked(int uid) {
         NpuStatsLog.write(NpuStatsLog.NPU_APP_BLOCKED, uid);
+    }
+
+    public void logModelLoadRequested(ModelLoadRequestInfo modelLoadRequestInfo) {
+        ModelLoadRequest request = modelLoadRequestInfo.getRequest();
+        NpuStatsLog.write(
+                NpuStatsLog.NPU_MODEL_LOAD_REQUESTED,
+                modelLoadRequestInfo.getUid(),
+                request.getId(),
+                convertModelSize(request.getSize()),
+                convertModelPriority(request.getPriority()));
+    }
+
+    public void logModelLoadPolicyResponded(ModelLoadRequestInfo modelLoadRequestInfo, int status) {
+        ModelLoadRequest request = modelLoadRequestInfo.getRequest();
+        NpuStatsLog.write(
+                NpuStatsLog.NPU_MODEL_LOAD_POLICY_RESPONDED,
+                modelLoadRequestInfo.getUid(),
+                request.getId(),
+                convertModelLoadStatus(status));
+    }
+
+    public void logModelLoadRequestCancelled(ModelLoadRequestInfo modelLoadRequestInfo) {
+        ModelLoadRequest request = modelLoadRequestInfo.getRequest();
+        NpuStatsLog.write(
+                NpuStatsLog.NPU_MODEL_LOAD_REQUEST_CANCELLED,
+                modelLoadRequestInfo.getUid(),
+                request.getId());
+    }
+
+    public void logModelUnloaded(ModelLoadRequestInfo modelLoadRequestInfo) {
+        ModelLoadRequest request = modelLoadRequestInfo.getRequest();
+        NpuStatsLog.write(
+                NpuStatsLog.NPU_MODEL_LOAD_STATE_CHANGED,
+                modelLoadRequestInfo.getUid(),
+                request.getId(),
+                NpuStatsLog.NPU_MODEL_LOAD_STATE_CHANGED__STATE__STATE_UNLOADED);
+    }
+
+    public void logModelLoaded(ModelLoadRequestInfo modelLoadRequestInfo) {
+        ModelLoadRequest request = modelLoadRequestInfo.getRequest();
+        NpuStatsLog.write(
+                NpuStatsLog.NPU_MODEL_LOAD_STATE_CHANGED,
+                modelLoadRequestInfo.getUid(),
+                request.getId(),
+                NpuStatsLog.NPU_MODEL_LOAD_STATE_CHANGED__STATE__STATE_LOADED);
+    }
+
+    private int convertModelSize(int modelSize) {
+        return switch (modelSize) {
+            case NpuManager.NPU_MODEL_SIZE_LESS_THAN_1GB ->
+                    NpuStatsLog.NPU_MODEL_LOAD_REQUESTED__MODEL_SIZE__SIZE_LESS_THAN_ONE_GB;
+            case NpuManager.NPU_MODEL_SIZE_BETWEEN_1GB_AND_2GB ->
+                    NpuStatsLog
+                            .NPU_MODEL_LOAD_REQUESTED__MODEL_SIZE__SIZE_BETWEEN_ONE_GB_AND_TWO_GB;
+            case NpuManager.NPU_MODEL_SIZE_GREATER_THAN_2G ->
+                    NpuStatsLog.NPU_MODEL_LOAD_REQUESTED__MODEL_SIZE__SIZE_GREATER_THAN_TWO_G;
+            default -> NpuStatsLog.NPU_MODEL_LOAD_REQUESTED__MODEL_SIZE__SIZE_UNKNOWN;
+        };
+    }
+
+    private int convertModelPriority(int modelPriority) {
+        return switch (modelPriority) {
+            case NpuManager.NPU_MODEL_PRIORITY_NORMAL ->
+                    NpuStatsLog.NPU_MODEL_LOAD_REQUESTED__MODEL_PRIORITY__PRIORITY_NORMAL;
+            case NpuManager.NPU_MODEL_PRIORITY_BACKGROUND ->
+                    NpuStatsLog.NPU_MODEL_LOAD_REQUESTED__MODEL_PRIORITY__PRIORITY_BACKGROUND;
+            default -> NpuStatsLog.NPU_MODEL_LOAD_REQUESTED__MODEL_PRIORITY__PRIORITY_UNKNOWN;
+        };
+    }
+
+    private int convertModelLoadStatus(int status) {
+        return switch (status) {
+            case NpuManager.NPU_MODEL_LOAD_STATUS_CAN_LOAD_NOW ->
+                    NpuStatsLog.NPU_MODEL_LOAD_POLICY_RESPONDED__STATUS__STATUS_CAN_LOAD_NOW;
+            case NpuManager.NPU_MODEL_LOAD_STATUS_WAIT_FOR_UNLOAD ->
+                    NpuStatsLog.NPU_MODEL_LOAD_POLICY_RESPONDED__STATUS__STATUS_WAIT_FOR_UNLOAD;
+            case NpuManager.NPU_MODEL_LOAD_STATUS_NOT_PRIORITIZED ->
+                    NpuStatsLog.NPU_MODEL_LOAD_POLICY_RESPONDED__STATUS__STATUS_NOT_PRIORITIZED;
+            default -> NpuStatsLog.NPU_MODEL_LOAD_POLICY_RESPONDED__STATUS__STATUS_UNKNOWN;
+        };
     }
 
     private int convertStartReason(@StartReason byte reason) {
